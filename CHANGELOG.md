@@ -15,6 +15,10 @@ User-visible DX-OS Open Core changes are recorded here. The format follows
 
 - R24 tag-triggered release-candidate packaging (Java jars, frontend, SBOM/NOTICE inventory, SHA256SUMS), with independent distribution-acceptance gate before GitHub Release/GHCR publication.
 
+### Fixed
+
+- Prevent Helpdesk request UUIDs from overflowing into request titles in the integration-local list; preserve full identifiers and navigation links (#225: #242).
+
 ### Changed
 
 - Portal #233: use IT Helpdesk · OpenTrix branding and simpler request/version copy.
