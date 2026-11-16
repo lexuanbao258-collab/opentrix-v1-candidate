@@ -15,6 +15,15 @@ _All notable user-visible changes to OpenTrix are recorded here, following Keep 
 
 ## [Unreleased]
 
+_Chưa có thay đổi mới sau bản ứng viên v0.2.0._
+_No new changes have been recorded after the v0.2.0 release candidate._
+
+## [0.2.0]
+
+> **Phạm vi / Scope:** v0.2.0 chỉ phân phối gói mã nguồn và tài liệu/bằng chứng phát hành đi kèm; không bao gồm JAR dựng sẵn, frontend `dist` hoặc Docker/GHCR images.
+>
+> _Version 0.2.0 distributes source code and accompanying release documentation/evidence only; it excludes prebuilt JARs, frontend `dist`, and Docker/GHCR images._
+
 ### Added · Thêm mới
 
 - Theme đăng nhập Keycloak OpenTrix IT Helpdesk cho môi trường integration-local: bố cục hai cột, tiếng Việt, logo và hình minh họa nội bộ; kế thừa form gốc `keycloak.v2`, giữ nguyên Authorization Code + PKCE (#225: #243).
@@ -25,8 +34,8 @@ _All notable user-visible changes to OpenTrix are recorded here, following Keep 
   _Standalone APISIX gateway overlay with JWKS token validation, rate limiting and forwarded-header rewrite, enabled with `demo-up -Gateway` / `--gateway`._
 - Realm Keycloak `tricore` có phiên bản cho môi trường demo, cùng cấu hình mạng dùng chung cho PostgreSQL, Keycloak và Backend (#226, #227).
   _Versioned `tricore` Keycloak demo realm and a shared-network demo setup for PostgreSQL, Keycloak and Backend._
-- Đóng gói phát hành theo tag: gói mã nguồn, bản build Java và frontend, SBOM và NOTICE, checksum SHA256, ghi chú phát hành theo phiên bản; có cổng nghiệm thu trước khi công bố.
-  _Tag-triggered release packaging: source archive, Java and frontend builds, SBOM and NOTICE inventory, SHA256 checksums and versioned release notes, guarded by an acceptance gate before publication._
+- Chuẩn bị đóng gói và nghiệm thu bản phát hành SOURCE-ONLY: gói mã nguồn, SBOM và NOTICE, SHA256SUMS, ghi chú phát hành và cổng phê duyệt trước công bố. Không phân phối JAR, frontend `dist` hoặc Docker/GHCR images trong v0.2.0.
+  _Prepare SOURCE-ONLY release packaging and acceptance: source archive, SBOM and NOTICE, SHA256SUMS, release notes, and a publication approval gate. Version 0.2.0 does not distribute JARs, frontend `dist`, or Docker/GHCR images._
 - Quyết định kiến trúc ADR-009, ADR-016, ADR-017, ADR-018 và mục lục tài liệu kiến trúc tương ứng (#221).
   _Architecture decisions ADR-009, ADR-016, ADR-017 and ADR-018 with aligned architecture and documentation indexes._
 
@@ -90,5 +99,6 @@ _All notable user-visible changes to OpenTrix are recorded here, following Keep 
 - Gỡ workflow CI riêng của Issue #23; các kiểm tra bảo mật chạy trong CI dùng chung.
   _The separate Issue #23 workflow; its security checks run in shared CI._
 
-[Unreleased]: https://github.com/tricore-opentrix/opentrix/compare/v0.1.0...HEAD
+[Unreleased]: https://github.com/tricore-opentrix/opentrix/compare/v0.2.0...HEAD
+[0.2.0]: https://github.com/tricore-opentrix/opentrix/compare/v0.1.0...v0.2.0
 [0.1.0]: https://github.com/tricore-opentrix/opentrix/releases/tag/v0.1.0
