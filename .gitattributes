@@ -13,3 +13,6 @@ gradlew text eol=lf
 *.jpg binary
 *.ico binary
 *.pdf binary
+
+# Keep the Gradle wrapper binary out of GitHub-generated source archives (OLP PoF criterion 5).
+backend/gradle/wrapper/gradle-wrapper.jar export-ignore
