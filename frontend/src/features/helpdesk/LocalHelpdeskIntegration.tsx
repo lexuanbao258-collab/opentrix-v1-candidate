@@ -4,7 +4,7 @@
 
 import { useEffect, useRef, useState } from "react";
 import { Link, NavLink, Navigate, Route, Routes } from "react-router-dom";
-import { ArrowRight, Check, ListTodo, LogOut, Plus } from "lucide-react";
+import { ArrowRight, Check, Database, ListTodo, LogOut, Plus } from "lucide-react";
 import { PortalProvider, usePortal } from "../../context";
 import cloverLogo from "../../assets/opentrix-clover.svg";
 import { HelpdeskRequestService } from "../../services/mvp/HelpdeskRequestService";
@@ -15,6 +15,8 @@ import {
   sameOriginHelpdeskTransport,
 } from "../../services/mvp/http/sameOriginTransport";
 import { HelpdeskPortal } from "./HelpdeskPortal";
+import { PlatformRecords } from "../platform/PlatformRecords";
+import { PlatformClient } from "../../services/platform/platformClient";
 import "./helpdesk-local.css";
 
 function RequestIllustration() {
@@ -72,11 +74,15 @@ function Login({ sessionExpired = false }: { sessionExpired?: boolean }) {
   );
 }
 
-function SessionPortal() {
+function SessionPortal({ platform }: { platform: PlatformClient }) {
   const { sessionExpired } = usePortal();
   if (sessionExpired) return <Login sessionExpired />;
   return (
     <Routes>
+      <Route
+        path="/platform/:app/:entity"
+        element={<PlatformRecords client={platform} />}
+      />
       <Route
         path="/mvp/helpdesk/*"
         element={<HelpdeskPortal mode="integration-local" />}
@@ -93,7 +99,7 @@ export default function LocalHelpdeskIntegration() {
     | "anonymous"
     | "expired"
     | "failed"
-    | { service: HelpdeskRequestService; csrfToken: string }
+    | { service: HelpdeskRequestService; csrfToken: string; platform: PlatformClient }
   >("loading");
   const logoutStarted = useRef(false);
   const [loggingOut, setLoggingOut] = useState(false);
@@ -120,6 +126,9 @@ export default function LocalHelpdeskIntegration() {
           result
             ? {
                 csrfToken: result.csrfToken,
+                platform: new PlatformClient(result.csrfToken, () => {
+                  if (active) setSession("expired");
+                }),
                 service: new HelpdeskRequestService(
                   new HelpdeskApiClient(
                     sameOriginHelpdeskTransport(result.csrfToken),
@@ -188,6 +197,10 @@ export default function LocalHelpdeskIntegration() {
                 <Plus size={18} aria-hidden="true" />
                 Tạo yêu cầu
               </NavLink>
+              <NavLink to="/platform/it-helpdesk/category">
+                <Database size={18} aria-hidden="true" />
+                Danh mục dịch vụ
+              </NavLink>
             </nav>
             <p>Hỗ trợ IT nội bộ</p>
           </aside>
@@ -209,7 +222,7 @@ export default function LocalHelpdeskIntegration() {
             <Login sessionExpired={session === "expired"} />
           ) : (
             <PortalProvider helpdeskService={session.service} helpdeskSession>
-              <SessionPortal />
+              <SessionPortal platform={session.platform} />
             </PortalProvider>
           )}
         </main>
