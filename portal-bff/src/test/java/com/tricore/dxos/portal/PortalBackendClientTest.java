@@ -243,6 +243,69 @@ class PortalBackendClientTest {
         verifyNoInteractions(http);
     }
 
+    @Test
+    @SuppressWarnings("unchecked")
+    void platformRoutesForwardOnlyValidatedPathsWithServerHeldBearer() throws Exception {
+        HttpClient http = httpResponse(200, new ByteArrayInputStream("{}".getBytes()));
+        var platform = new PortalPlatformClient(bff(manager(), http));
+        var request = new MockHttpServletRequest();
+        request.setContent("{\"expectedVersion\":0,\"data\":{}}".getBytes(java.nio.charset.StandardCharsets.UTF_8));
+
+        assertEquals(200, platform.update("it-helpdesk", "category", id(), principal(), request).getStatusCode().value());
+        assertEquals(200, platform.search("it-helpdesk", "category", "a&limit=1000 %", 20, 0, principal(),
+                new MockHttpServletRequest()).getStatusCode().value());
+
+        var sent = org.mockito.ArgumentCaptor.forClass(HttpRequest.class);
+        verify(http, times(2)).send(sent.capture(), any(HttpResponse.BodyHandler.class));
+        assertEquals("PUT", sent.getAllValues().get(0).method());
+        assertEquals("https://api.example.test/api/v1/apps/it-helpdesk/entities/category/records/" + id(),
+                sent.getAllValues().get(0).uri().toString());
+        assertEquals("Bearer server-access-token",
+                sent.getAllValues().get(0).headers().firstValue("Authorization").orElseThrow());
+        assertEquals("https://api.example.test/api/v1/apps/it-helpdesk/entities/category/records"
+                + "?limit=20&offset=0&q=a%26limit%3D1000+%25", sent.getAllValues().get(1).uri().toString());
+    }
+
+    @Test
+    void platformRoutesRejectUnsafeSegmentsAndParametersWithoutNetwork() {
+        HttpClient http = mock(HttpClient.class);
+        var platform = new PortalPlatformClient(bff(manager(), http));
+        for (String[] path : new String[][]{{"..", "category"}, {"it-helpdesk", "..%2f"}, {"IT", "category"},
+                {"it-helpdesk", "cat/egory"}}) {
+            assertEquals(404, platform.entity(path[0], path[1], principal(), new MockHttpServletRequest())
+                    .getStatusCode().value(), String.join("/", path));
+        }
+        assertEquals(400, platform.search("it-helpdesk", "category", null, 101, 0, principal(),
+                new MockHttpServletRequest()).getStatusCode().value());
+        assertEquals(400, platform.delete("it-helpdesk", "category", id(), -1, principal(),
+                new MockHttpServletRequest()).getStatusCode().value());
+        verifyNoInteractions(http);
+    }
+
+    @Test
+    @SuppressWarnings("unchecked")
+    void platformDeleteIsForwardedOnceAndUncertainOnConnectionLoss() throws Exception {
+        HttpClient http = mock(HttpClient.class);
+        when(http.send(any(HttpRequest.class), any(HttpResponse.BodyHandler.class)))
+                .thenThrow(new IOException("connection lost after send"));
+        var result = new PortalPlatformClient(bff(manager(), http))
+                .delete("it-helpdesk", "category", id(), 3, principal(), new MockHttpServletRequest());
+        assertEquals(503, result.getStatusCode().value());
+        assertEquals("COMMIT_OUTCOME_UNKNOWN", ((Map<?, ?>) result.getBody()).get("code"));
+        var sent = org.mockito.ArgumentCaptor.forClass(HttpRequest.class);
+        verify(http, times(1)).send(sent.capture(), any(HttpResponse.BodyHandler.class));
+        assertEquals("DELETE", sent.getValue().method());
+        assertTrue(sent.getValue().uri().toString().endsWith("/records/" + id() + "?expectedVersion=3"));
+    }
+
+    @Test
+    void platformNoContentIsPassedThrough() throws Exception {
+        HttpClient http = httpResponse(204, new ByteArrayInputStream(new byte[0]));
+        var result = new PortalPlatformClient(bff(manager(), http))
+                .delete("it-helpdesk", "category", id(), 0, principal(), new MockHttpServletRequest());
+        assertEquals(204, result.getStatusCode().value());
+    }
+
     private static void assertUnusable(OAuth2AuthorizedClientManager manager) {
         HttpClient http = mock(HttpClient.class);
         MockHttpServletRequest request = new MockHttpServletRequest();

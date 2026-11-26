@@ -95,16 +95,22 @@ class PortalBackendClient {
 
     private ResponseEntity<?> forwardWrite(String path, HttpServletRequest request,
                                            OAuth2AuthenticationToken principal) {
+        return forwardWrite("POST", path, request, principal);
+    }
+
+    ResponseEntity<?> forwardWrite(String method, String path, HttpServletRequest request,
+                                   OAuth2AuthenticationToken principal) {
         try {
             byte[] body = request.getInputStream().readNBytes(MAX_BODY_BYTES + 1);
             if (body.length > MAX_BODY_BYTES) return ResponseEntity.status(413).build();
-            return forward("POST", path, body, principal, request);
+            return forward(method, path, body, principal, request);
         } catch (IOException exception) {
             return ResponseEntity.badRequest().build();
         }
     }
 
-    private ResponseEntity<?> forward(String method, String path, byte[] body,
+    /** Body-less requests are GET or DELETE; any non-GET is treated as a write that may have committed. */
+    ResponseEntity<?> forward(String method, String path, byte[] body,
                                       OAuth2AuthenticationToken principal, HttpServletRequest servletRequest) {
         OAuth2AccessToken token = authorization.usableToken(principal, servletRequest);
         if (token == null) return ResponseEntity.status(401).build();
@@ -112,7 +118,7 @@ class PortalBackendClient {
         HttpRequest.Builder request = HttpRequest.newBuilder(target).timeout(Duration.ofSeconds(15))
                 .header("Authorization", "Bearer " + token.getTokenValue())
                 .header("Accept", MediaType.APPLICATION_JSON_VALUE);
-        if (body == null) request.GET();
+        if (body == null) request.method(method, HttpRequest.BodyPublishers.noBody());
         else request.header("Content-Type", MediaType.APPLICATION_JSON_VALUE)
                 .method(method, HttpRequest.BodyPublishers.ofByteArray(body));
         try {
@@ -126,6 +132,7 @@ class PortalBackendClient {
                 if (status < 200 || status > 599 || status >= 300 && status < 400) {
                     return ResponseEntity.status(502).build();
                 }
+                if (status == 204) return ResponseEntity.noContent().header("Cache-Control", "no-store").build();
                 byte[] responseBody = upstream.readNBytes(MAX_RESPONSE_BYTES + 1);
                 if (responseBody.length > MAX_RESPONSE_BYTES) return ResponseEntity.status(502).build();
                 return ResponseEntity.status(status).contentType(MediaType.APPLICATION_JSON)
@@ -134,11 +141,11 @@ class PortalBackendClient {
         } catch (IOException exception) {
             // A POST may have committed before the connection failed. Never retry it automatically.
             return ResponseEntity.status(503).contentType(MediaType.APPLICATION_JSON)
-                    .body(Map.of("code", body == null ? "UPSTREAM_UNAVAILABLE" : "COMMIT_OUTCOME_UNKNOWN"));
+                    .body(Map.of("code", "GET".equals(method) ? "UPSTREAM_UNAVAILABLE" : "COMMIT_OUTCOME_UNKNOWN"));
         } catch (InterruptedException exception) {
             Thread.currentThread().interrupt();
             return ResponseEntity.status(503).contentType(MediaType.APPLICATION_JSON)
-                    .body(Map.of("code", body == null ? "UPSTREAM_UNAVAILABLE" : "COMMIT_OUTCOME_UNKNOWN"));
+                    .body(Map.of("code", "GET".equals(method) ? "UPSTREAM_UNAVAILABLE" : "COMMIT_OUTCOME_UNKNOWN"));
         }
     }
 
