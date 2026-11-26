@@ -1,0 +1,33 @@
+{
+  "id": "hr-leave",
+  "version": "0.1.0",
+  "license": "Apache-2.0",
+  "name": { "en": "HR Leave (test fixture)", "vi": "Nghỉ phép (dữ liệu kiểm thử)" },
+  "roles": {
+    "employee": { "name": { "en": "Employee" } },
+    "manager": { "name": { "en": "Manager" } }
+  },
+  "entities": {
+    "leaveRequest": {
+      "name": { "en": "Leave request" },
+      "schema": {
+        "type": "object",
+        "additionalProperties": false,
+        "required": ["kind", "startDate", "reason"],
+        "properties": {
+          "kind": { "type": "string", "enum": ["ANNUAL", "SICK"] },
+          "startDate": { "type": "string", "format": "date" },
+          "days": { "type": "integer", "minimum": 1, "maximum": 30 },
+          "reason": { "type": "string", "minLength": 1, "maxLength": 500 }
+        }
+      },
+      "search": ["reason"],
+      "permissions": {
+        "read": { "employee": "own", "manager": "all" },
+        "create": { "employee": "own" },
+        "update": { "employee": "own", "manager": "all" },
+        "delete": { "employee": "own" }
+      }
+    }
+  }
+}

@@ -35,3 +35,15 @@ tricore:
     oidc:
       audience: ${OIDC_AUDIENCE}
       resource-client-id: ${OIDC_RESOURCE_CLIENT_ID}
+
+opentrix:
+  platform:
+    # The Platform API needs the opentrix_platform schema (PlatformMigration) and a least-privilege runtime login.
+    enabled: ${OPENTRIX_PLATFORM_ENABLED:false}
+    tenant-id: ${OPENTRIX_PLATFORM_TENANT_ID:default}
+
+springdoc:
+  api-docs:
+    # Off by default. When on, /v3/api-docs still requires a valid bearer token (no permitAll).
+    enabled: ${OPENTRIX_OPENAPI_ENABLED:false}
+  paths-to-match: /api/v1/apps/**

@@ -38,8 +38,15 @@ dependencies {
     implementation 'org.flywaydb:flyway-core'
     runtimeOnly 'org.flywaydb:flyway-database-postgresql'
     runtimeOnly 'org.postgresql:postgresql'
+
+    // Platform: manifest/record validation (Jackson 2 line; 3.x needs Jackson 3) and OpenAPI document.
+    implementation 'com.networknt:json-schema-validator:2.0.8'
+    implementation 'org.springdoc:springdoc-openapi-starter-webmvc-api:2.8.17'
     testImplementation 'org.springframework.boot:spring-boot-starter-test'
     testImplementation 'com.tngtech.archunit:archunit-junit5:1.5.1'
+    // Disposable PostgreSQL for Platform integration tests; no Docker or shared database needed.
+    testImplementation 'io.zonky.test:embedded-postgres:2.2.3'
+    testImplementation enforcedPlatform('io.zonky.test.postgres:embedded-postgres-binaries-bom:17.11.0')
     testRuntimeOnly 'org.junit.platform:junit-platform-launcher'
 }
 
@@ -166,4 +173,12 @@ tasks.register('workflowSecurityDefinerReview', JavaExec) {
     classpath = sourceSets.main.runtimeClasspath
     mainClass = 'com.tricore.dxos.infrastructure.workflow.WorkflowSecurityDefinerReview'
     args rootProject.file('../docs/evidence/issue-25-security-definer-review.sql').absolutePath
+}
+
+tasks.register('platformMigrate', JavaExec) {
+    description = 'Owner-only deployment step: migrates opentrix_platform and registers apps/*/app.json (PLATFORM_* env).'
+    group = 'operator migration'
+    dependsOn classes
+    classpath = sourceSets.main.runtimeClasspath
+    mainClass = 'com.tricore.dxos.platform.registry.PlatformMigration'
 }

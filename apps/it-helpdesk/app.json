@@ -1,0 +1,36 @@
+{
+  "id": "it-helpdesk",
+  "version": "1.0.0",
+  "license": "Apache-2.0",
+  "name": { "en": "IT Helpdesk", "vi": "Hỗ trợ CNTT" },
+  "description": { "en": "Internal IT support. Slice M1 declares only the service category catalog." },
+  "roles": {
+    "admin": { "name": { "en": "Helpdesk administrator", "vi": "Quản trị Helpdesk" } },
+    "agent": { "name": { "en": "Support agent", "vi": "Kỹ thuật viên" } },
+    "requester": { "name": { "en": "Requester", "vi": "Người yêu cầu" } }
+  },
+  "entities": {
+    "category": {
+      "name": { "en": "Service category", "vi": "Danh mục dịch vụ" },
+      "schema": {
+        "$schema": "https://json-schema.org/draft/2020-12/schema",
+        "type": "object",
+        "additionalProperties": false,
+        "required": ["code", "name", "active"],
+        "properties": {
+          "code": { "type": "string", "title": "Code", "pattern": "^[A-Z][A-Z0-9_]{1,31}$", "maxLength": 32 },
+          "name": { "type": "string", "title": "Name", "minLength": 1, "maxLength": 200 },
+          "description": { "type": "string", "title": "Description", "maxLength": 2000 },
+          "active": { "type": "boolean", "title": "Active" }
+        }
+      },
+      "search": ["code", "name"],
+      "permissions": {
+        "read": { "admin": "all", "agent": "all", "requester": "all" },
+        "create": { "admin": "all" },
+        "update": { "admin": "all" },
+        "delete": { "admin": "all" }
+      }
+    }
+  }
+}

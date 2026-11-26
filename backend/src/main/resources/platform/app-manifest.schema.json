@@ -1,0 +1,122 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "urn:opentrix:candidate:app-manifest:v1",
+  "title": "OpenTrix candidate application manifest (format candidate-v1)",
+  "description": "Frame (id, version, license, name, description, roles) adapted from upstream tricore-opentrix/opentrix commit 1ec99ad (ADR-019, Phan Hai Yen, Apache-2.0). Candidate changes: entities use a restricted JSON Schema subset with no $ref/$id, declare search fields and role permissions, and the BPMN workflow key is not part of this format.",
+  "type": "object",
+  "additionalProperties": false,
+  "required": ["id", "version", "name", "roles", "entities"],
+  "properties": {
+    "id": { "type": "string", "pattern": "^[a-z][a-z0-9-]{0,62}$" },
+    "version": {
+      "type": "string",
+      "maxLength": 64,
+      "pattern": "^(0|[1-9]\\d*)\\.(0|[1-9]\\d*)\\.(0|[1-9]\\d*)(?:-((?:0|[1-9]\\d*|\\d*[a-zA-Z-][0-9a-zA-Z-]*)(?:\\.(?:0|[1-9]\\d*|\\d*[a-zA-Z-][0-9a-zA-Z-]*))*))?(?:\\+([0-9a-zA-Z-]+(?:\\.[0-9a-zA-Z-]+)*))?$"
+    },
+    "license": { "type": "string", "pattern": "^[A-Za-z0-9][A-Za-z0-9.+-]*$" },
+    "name": { "$ref": "#/$defs/localizedText" },
+    "description": { "$ref": "#/$defs/localizedText" },
+    "roles": {
+      "type": "object",
+      "minProperties": 1,
+      "maxProperties": 32,
+      "propertyNames": { "pattern": "^[a-z][a-z0-9_-]{0,62}$" },
+      "additionalProperties": {
+        "type": "object",
+        "additionalProperties": false,
+        "required": ["name"],
+        "properties": { "name": { "$ref": "#/$defs/localizedText" } }
+      }
+    },
+    "entities": {
+      "type": "object",
+      "minProperties": 1,
+      "maxProperties": 64,
+      "propertyNames": { "pattern": "^[a-z][a-zA-Z0-9]{0,62}$" },
+      "additionalProperties": { "$ref": "#/$defs/entity" }
+    }
+  },
+  "$defs": {
+    "localizedText": {
+      "type": "object",
+      "required": ["en"],
+      "maxProperties": 16,
+      "propertyNames": { "pattern": "^[a-z]{2,3}(-[A-Za-z0-9]{2,8})*$" },
+      "additionalProperties": { "type": "string", "minLength": 1, "maxLength": 500 }
+    },
+    "entity": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["name", "schema", "permissions"],
+      "properties": {
+        "name": { "$ref": "#/$defs/localizedText" },
+        "schema": { "$ref": "#/$defs/recordSchema" },
+        "search": {
+          "type": "array",
+          "maxItems": 8,
+          "uniqueItems": true,
+          "items": { "type": "string", "pattern": "^[a-z][a-zA-Z0-9_]{0,62}$" }
+        },
+        "permissions": {
+          "type": "object",
+          "additionalProperties": false,
+          "required": ["read", "create", "update", "delete"],
+          "properties": {
+            "read": { "$ref": "#/$defs/grants" },
+            "create": { "$ref": "#/$defs/grants" },
+            "update": { "$ref": "#/$defs/grants" },
+            "delete": { "$ref": "#/$defs/grants" }
+          }
+        }
+      }
+    },
+    "grants": {
+      "description": "Role name to scope. 'all' covers every record of the entity; 'own' covers records the caller created.",
+      "type": "object",
+      "propertyNames": { "pattern": "^[a-z][a-z0-9_-]{0,62}$" },
+      "additionalProperties": { "enum": ["all", "own"] }
+    },
+    "recordSchema": {
+      "description": "Restricted JSON Schema 2020-12 subset: a closed object of scalar fields. No $ref, $id, composition or remote resources.",
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["type", "properties", "additionalProperties"],
+      "properties": {
+        "$schema": { "const": "https://json-schema.org/draft/2020-12/schema" },
+        "type": { "const": "object" },
+        "title": { "type": "string", "maxLength": 200 },
+        "description": { "type": "string", "maxLength": 1000 },
+        "additionalProperties": { "const": false },
+        "required": {
+          "type": "array",
+          "uniqueItems": true,
+          "items": { "type": "string", "pattern": "^[a-z][a-zA-Z0-9_]{0,62}$" }
+        },
+        "properties": {
+          "type": "object",
+          "minProperties": 1,
+          "maxProperties": 64,
+          "propertyNames": { "pattern": "^[a-z][a-zA-Z0-9_]{0,62}$" },
+          "additionalProperties": { "$ref": "#/$defs/field" }
+        }
+      }
+    },
+    "field": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["type"],
+      "properties": {
+        "type": { "enum": ["string", "integer", "number", "boolean"] },
+        "title": { "type": "string", "maxLength": 200 },
+        "description": { "type": "string", "maxLength": 1000 },
+        "minLength": { "type": "integer", "minimum": 0, "maximum": 10000 },
+        "maxLength": { "type": "integer", "minimum": 1, "maximum": 10000 },
+        "pattern": { "type": "string", "maxLength": 200 },
+        "format": { "enum": ["date", "date-time", "email"] },
+        "enum": { "type": "array", "minItems": 1, "maxItems": 100, "uniqueItems": true },
+        "minimum": { "type": "number" },
+        "maximum": { "type": "number" }
+      }
+    }
+  }
+}
