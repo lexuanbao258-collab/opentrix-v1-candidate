@@ -55,6 +55,13 @@ public class PlatformExceptionHandler {
         return error(415, "UNSUPPORTED_MEDIA_TYPE", "Request body must be application/json", Map.of());
     }
 
+    /** Transaction could not even start: nothing was written. */
+    @ExceptionHandler(org.springframework.transaction.CannotCreateTransactionException.class)
+    public ResponseEntity<ApiError> storeUnavailable(Exception exception) {
+        LOG.error("Platform store unavailable", exception);
+        return error(503, "STORE_UNAVAILABLE", "The data store is unavailable; no change was made", Map.of());
+    }
+
     @ExceptionHandler(Exception.class)
     public ResponseEntity<ApiError> unexpected(Exception exception) {
         LOG.error("Platform request failed", exception);

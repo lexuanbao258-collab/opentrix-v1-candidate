@@ -43,15 +43,27 @@ public final class TestJwt {
         return SecurityConfig.configureJwtDecoder(reference.get(), ISSUER, AUDIENCE);
     }
 
+    /** Keycloak-shaped client_credentials token: service-account subject, azp = client id. */
+    public static String machineToken(String clientId, String... clientRoles) {
+        return sign(base("service-account-" + clientId, clientRoles).claim("azp", clientId)
+                .claim("client_id", clientId).build());
+    }
+
     /** Signed access token with Keycloak-shaped client roles on the resource client. */
     public static String token(String subject, String... clientRoles) {
+        return sign(base(subject, clientRoles).claim("azp", "portal").claim("preferred_username", subject).build());
+    }
+
+    private static JWTClaimsSet.Builder base(String subject, String... clientRoles) {
+        return new JWTClaimsSet.Builder()
+                .issuer(ISSUER).audience(AUDIENCE).subject(subject)
+                .issueTime(Date.from(Instant.now())).expirationTime(Date.from(Instant.now().plusSeconds(300)))
+                .claim("typ", "Bearer")
+                .claim("resource_access", Map.of(AUDIENCE, Map.of("roles", List.of(clientRoles))));
+    }
+
+    private static String sign(JWTClaimsSet claims) {
         try {
-            var claims = new JWTClaimsSet.Builder()
-                    .issuer(ISSUER).audience(AUDIENCE).subject(subject)
-                    .issueTime(Date.from(Instant.now())).expirationTime(Date.from(Instant.now().plusSeconds(300)))
-                    .claim("typ", "Bearer")
-                    .claim("resource_access", Map.of(AUDIENCE, Map.of("roles", List.of(clientRoles))))
-                    .build();
             var jwt = new SignedJWT(new JWSHeader.Builder(JWSAlgorithm.RS256).type(JOSEObjectType.JWT)
                     .keyID(KEY.getKeyID()).build(), claims);
             jwt.sign(new RSASSASigner(KEY));

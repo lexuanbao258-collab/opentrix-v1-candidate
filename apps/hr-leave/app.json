@@ -1,0 +1,54 @@
+{
+  "id": "hr-leave",
+  "version": "1.0.0",
+  "license": "Apache-2.0",
+  "name": { "en": "HR Leave", "vi": "Nghỉ phép" },
+  "description": { "en": "Leave requests with a manager approval workflow. Second application proving Platform reuse." },
+  "roles": {
+    "employee": { "name": { "en": "Employee", "vi": "Nhân viên" } },
+    "manager": { "name": { "en": "Manager", "vi": "Quản lý" } },
+    "auditor": { "name": { "en": "Auditor", "vi": "Kiểm toán" } }
+  },
+  "entities": {
+    "leaveRequest": {
+      "name": { "en": "Leave request", "vi": "Đơn nghỉ phép" },
+      "schema": {
+        "$schema": "https://json-schema.org/draft/2020-12/schema",
+        "type": "object",
+        "additionalProperties": false,
+        "required": ["kind", "startDate", "days", "reason"],
+        "properties": {
+          "kind": { "type": "string", "title": "Kind", "enum": ["ANNUAL", "SICK", "UNPAID"] },
+          "startDate": { "type": "string", "title": "Start date", "format": "date" },
+          "days": { "type": "integer", "title": "Days", "minimum": 1, "maximum": 30 },
+          "reason": { "type": "string", "title": "Reason", "minLength": 1, "maxLength": 500, "sensitive": true }
+        }
+      },
+      "search": ["reason"],
+      "permissions": {
+        "read": { "employee": "own", "manager": "all", "auditor": "all" },
+        "create": { "employee": "own" },
+        "update": { "employee": "own" },
+        "delete": { "employee": "own" },
+        "audit": { "auditor": "all" }
+      },
+      "workflow": {
+        "initialState": "DRAFT",
+        "states": {
+          "DRAFT": { "name": { "en": "Draft", "vi": "Nháp" } },
+          "PENDING": { "name": { "en": "Pending approval", "vi": "Chờ duyệt" }, "editable": false },
+          "APPROVED": { "name": { "en": "Approved", "vi": "Đã duyệt" }, "editable": false },
+          "REJECTED": { "name": { "en": "Rejected", "vi": "Từ chối" }, "editable": false },
+          "CANCELLED": { "name": { "en": "Cancelled", "vi": "Đã hủy" }, "editable": false }
+        },
+        "transitions": {
+          "submit": { "from": "DRAFT", "to": "PENDING", "roles": { "employee": "own" } },
+          "discard": { "from": "DRAFT", "to": "CANCELLED", "roles": { "employee": "own" } },
+          "approve": { "from": "PENDING", "to": "APPROVED", "roles": { "manager": "all" } },
+          "reject": { "from": "PENDING", "to": "REJECTED", "roles": { "manager": "all" } },
+          "withdraw": { "from": "PENDING", "to": "CANCELLED", "roles": { "employee": "own" } }
+        }
+      }
+    }
+  }
+}

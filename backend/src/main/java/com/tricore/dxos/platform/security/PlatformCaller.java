@@ -32,7 +32,8 @@ public class PlatformCaller {
         this.resourceClientId = resourceClientId;
     }
 
-    public record Caller(String subjectId, Set<String> clientRoles) {
+    /** {@code machine}: the token was issued to an OAuth2 client (client_credentials), not to a signed-in person. */
+    public record Caller(String subjectId, Set<String> clientRoles, boolean machine) {
         public Set<String> rolesIn(String appId) {
             String prefix = appId + ":";
             Set<String> roles = new HashSet<>();
@@ -41,6 +42,15 @@ public class PlatformCaller {
             }
             return Set.copyOf(roles);
         }
+    }
+
+    /**
+     * Keycloak's service_account scope maps the client-credentials session note to client_id.
+     * This only labels audit events; authorization depends on roles alone.
+     */
+    static boolean isMachine(org.springframework.security.oauth2.jwt.Jwt jwt) {
+        String clientId = jwt.getClaimAsString("client_id");
+        return clientId != null && !clientId.isBlank() && clientId.equals(jwt.getClaimAsString("azp"));
     }
 
     public Caller require() {
@@ -53,6 +63,8 @@ public class PlatformCaller {
                 && values.stream().allMatch(String.class::isInstance)) {
             roles = Set.copyOf(values.stream().map(String.class::cast).toList());
         }
-        return new Caller(subjectId, roles);
+        boolean machine = SecurityContextHolder.getContext().getAuthentication() instanceof JwtAuthenticationToken token
+                && isMachine(token.getToken());
+        return new Caller(subjectId, roles, machine);
     }
 }

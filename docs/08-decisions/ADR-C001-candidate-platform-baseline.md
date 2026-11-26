@@ -24,7 +24,7 @@ Phase 1 audit (2026-11-26) found that the repository is a hardened IT Helpdesk d
 
 ## 3. Decision — workflow engine
 
-Keep the existing Workflow domain (`core/workflow`: immutable definitions, instances, optimistic `runtimeVersion`, history). **Flowable is deferred.** The legacy `WorkflowController` stays unregistered until a Platform authorization boundary for transitions exists (a later slice). Rationale: Helpdesk and Leave need linear state machines; the domain is tested (unit tests) and explainable; a BPMN engine adds a large runtime, schema and learning cost without a current requirement.
+Keep the existing Workflow domain (`core/workflow`: immutable definitions, instances and optimistic `runtimeVersion`). **Flowable is deferred.** The legacy `WorkflowController` stays unregistered. Platform records with a workflow store the state on the record row and use its version as the workflow version. The service restores a domain instance for the transition, applies the manifest's role and ownership rules, and writes the new state and audit event in one PostgreSQL transaction. The service checks the supplied version under a row lock. A commit error returns `503 COMMIT_OUTCOME_UNKNOWN` for reconciliation.
 
 ## 4. Decision — data engine: hybrid relational + JSONB
 
@@ -49,7 +49,7 @@ Schema `opentrix_platform` (own Flyway history table `platform_schema_history`, 
 | --- | --- | --- |
 | `entities.<name>` = any JSON Schema 2020-12 (`$ref` to the meta-schema) | closed object of scalar fields; no `$ref`, `$id`, composition | no remote resolution, bounded validation cost, predictable storage |
 | no permission model | `permissions.{read,create,update,delete}` = role → `all` / `own` | server-side resource authorization from data |
-| `workflow` → BPMN file | not in the format | Flowable deferred (section 3) |
+| `workflow` → BPMN file | optional state machine on an entity | Initial state, states, transitions and role scopes are declared in JSON. States with no outgoing transitions are terminal. |
 | validator 3.0.9 (Jackson 3, test scope) | 2.0.8 (Jackson 2, runtime) | Spring Boot 3.5 runs on Jackson 2 |
 
 Duplicate JSON keys are rejected (strict parser). Nothing in a manifest is executed or concatenated into SQL.
@@ -58,7 +58,7 @@ Duplicate JSON keys are rejected (strict parser). Nothing in a manifest is execu
 
 **Runtime guard** (`PlatformRuntimeGuard`, startup only, fail-closed): refuses to start when the runtime login is superuser/createrole/createdb/bypassrls, holds CREATE on the database or the Platform schema, or owns the schema; when the schema is not at the expected migration; when any DDL event trigger exists; when a Platform table has a non-internal trigger; or when the login's privileges on Platform tables differ from the exact expected matrix (no extra, no missing privilege). **This is not equivalent to the legacy per-transaction catalog guard**, which stays active for the legacy Workflow schema only. Limit: the Platform check runs once at startup, so an event trigger, table trigger or grant added later by a privileged role is not detected until the next start. Migrations refuse databases with event triggers, so the Platform is not designed for databases that require them. A periodic or per-transaction re-check is an open item.
 
-**Manifest regular expressions** (`pattern`) are restricted to a finite, backtracking-safe subset (`SafePatterns`): literals, character classes, `.`, `\d \w \s`, quantifiers `?`, `{n}`, `{n,m}` (m <= 256), at most 3 variable-width atoms, no groups, alternation, `* + {n,}`, back-references or look-around; a field with `pattern` must declare `maxLength <= 1000`. Worst accepted case is bounded by 256^3 steps per value (test: `SafePatternsTest`).
+**Manifest regular expressions** (`pattern`) are restricted to a finite subset (`SafePatterns`): literals, character classes, `.`, `\d \w \s`, and bounded quantifiers. Up to three variable-width atoms may provide at most 256 width combinations per starting position. The validator checks a patterned field's declared `maxLength` (at most 1,000 characters) before running its regex.
 
 **Runtime privileges on the legacy schema:** the Platform migration grants only on `opentrix_platform`. `PlatformDatabaseSecurityTest.platformMigrationDoesNotWidenRuntimePrivilegesOnLegacySchemas` snapshots ACLs of every other schema before and after migration and asserts no change.
 
@@ -78,9 +78,13 @@ Duplicate JSON keys are rejected (strict parser). Nothing in a manifest is execu
 | GET | `.../records/{id}` | |
 | PUT | `.../records/{id}` | body `{expectedVersion, data}`; stale → 409 `VERSION_CONFLICT` |
 | DELETE | `.../records/{id}?expectedVersion=` | 204; stale → 409 |
+| GET | `.../records/{id}/workflow` | State, version and allowed actions for the caller |
+| POST | `.../records/{id}/transitions/{transition}` | Body `{expectedVersion}`; 200 with the updated record |
+| GET | `.../records/{id}/history` | Initial state and successful transitions; requires record read access |
+| GET | `.../entities/{entity}/audit?recordId=&limit=&offset=` | Requires the entity-wide `audit` grant; sensitive fields are redacted |
 | GET | `/v3/api-docs` | OpenAPI 3. **Off by default** (`OPENTRIX_OPENAPI_ENABLED`); when on it still requires a valid bearer token. Never routed by the ingress. The reviewed contract is committed as `docs/api/openapi-v1.json` and a test fails if it drifts from the running application. |
 
-Errors use the existing `ApiError {status, code, message, errors}` shape. Validation errors are keyed by JSON location (`/code`). The browser reaches these routes only through explicit Portal BFF routes (`PortalPlatformClient`), not a wildcard proxy. Third-party clients call the backend with a bearer token for the `tricore-api` audience.
+Platform application errors use `ApiError {status, code, message, errors}`. Validation errors are keyed by JSON location (`/code`). The browser uses explicit Portal BFF routes for its Platform record UI. External clients call the HTTPS ingress directly through the method/path allowlist with a bearer token for `tricore-api`. Audit distinguishes Keycloak client-credentials tokens by the issued `client_id` matching `azp`. Authorization uses app-scoped client roles and record visibility.
 
 **Tenant:** one deployment organisation (`opentrix.platform.tenant-id`, default `default`). Every query is scoped by `tenant_id`; this is a boundary, not multi-tenancy.
 
@@ -99,7 +103,7 @@ Errors use the existing `ApiError {status, code, message, errors}` shape. Valida
 - Registered manifests cannot evolve yet (immutable); schema evolution with existing records needs a later decision.
 - Search is substring `ILIKE` without a trigram index; fine for catalog sizes, not for large tables.
 - `offset` paging; no cursor.
-- Audit has no read API yet; rows are written in the same transaction and are append-only by privilege (no UPDATE/DELETE grant), not by trigger.
+- Audit rows are append-only by privilege. Runtime has SELECT/INSERT on audit and lacks UPDATE, DELETE and TRUNCATE.
 - Manifest regex patterns run in the JVM; manifests are owner-controlled, not user input.
 - Not production-ready; no multi-tenancy.
 

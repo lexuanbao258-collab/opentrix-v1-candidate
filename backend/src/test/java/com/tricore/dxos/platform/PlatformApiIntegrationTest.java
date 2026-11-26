@@ -44,15 +44,15 @@ import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.
 class PlatformApiIntegrationTest {
     private static final PlatformTestDatabase.Database DB = PlatformTestDatabase.fresh();
     private static final String CATEGORIES = "/api/v1/apps/it-helpdesk/entities/category/records";
-    private static final String LEAVES = "/api/v1/apps/hr-leave/entities/leaveRequest/records";
+    private static final String DOCS = "/api/v1/apps/docflow/entities/document/records";
 
     private static final String ADMIN = TestJwt.token("admin-1", "it-helpdesk:admin");
     private static final String REQUESTER = TestJwt.token("requester-1", "it-helpdesk:requester");
     private static final String OUTSIDER = TestJwt.token("outsider-1", "workflow:read");
-    private static final String HR_ADMIN_ONLY = TestJwt.token("hr-1", "hr-leave:admin", "hr-leave:manager");
-    private static final String EMPLOYEE_A = TestJwt.token("employee-a", "hr-leave:employee");
-    private static final String EMPLOYEE_B = TestJwt.token("employee-b", "hr-leave:employee");
-    private static final String MANAGER = TestJwt.token("manager-1", "hr-leave:manager");
+    private static final String HR_ADMIN_ONLY = TestJwt.token("hr-1", "docflow:admin", "docflow:reviewer");
+    private static final String AUTHOR_A = TestJwt.token("employee-a", "docflow:author");
+    private static final String AUTHOR_B = TestJwt.token("employee-b", "docflow:author");
+    private static final String REVIEWER = TestJwt.token("manager-1", "docflow:reviewer");
 
     @TestBean(name = "jwtDecoder")
     JwtDecoder jwtDecoder;
@@ -79,13 +79,13 @@ class PlatformApiIntegrationTest {
 
     @Test
     void cleanDatabaseIsMigratedAndBothManifestsAreRegistered() {
-        assertThat(DB.registered()).containsExactly("hr-leave", "it-helpdesk");
+        assertThat(DB.registered()).containsExactly("docflow", "it-helpdesk");
         assertThat(DB.runtimeSql().queryForObject("""
                 SELECT version FROM opentrix_platform.platform_schema_history WHERE success ORDER BY installed_rank DESC LIMIT 1""",
-                String.class)).isEqualTo("1");
+                String.class)).isEqualTo("2");
         assertThat(DB.runtimeSql().queryForList(
                 "SELECT entity_key FROM opentrix_platform.entity_definitions ORDER BY 1", String.class))
-                .containsExactly("category", "leaveRequest");
+                .containsExactly("category", "document");
     }
 
     @Test
@@ -168,13 +168,13 @@ class PlatformApiIntegrationTest {
     @Test
     void crossApplicationAccessIsBlocked() throws Exception {
         String id = createCategory("HW", "Hardware");
-        // A role in hr-leave, even one named "admin", grants nothing in it-helpdesk (and the reverse).
+        // A role in docflow, even one named "admin", grants nothing in it-helpdesk (and the reverse).
         call(get(CATEGORIES), HR_ADMIN_ONLY, null).andExpect(status().isNotFound());
         call(post(CATEGORIES), HR_ADMIN_ONLY, "{\"data\":" + category("X", "X") + "}").andExpect(status().isNotFound());
-        call(get(LEAVES), ADMIN, null).andExpect(status().isNotFound());
+        call(get(DOCS), ADMIN, null).andExpect(status().isNotFound());
         // A record id from it-helpdesk is not reachable through another application's or entity's path.
-        call(get(LEAVES + "/" + id), MANAGER, null).andExpect(status().isNotFound());
-        call(put(LEAVES + "/" + id), MANAGER, "{\"expectedVersion\":0,\"data\":" + leave("x") + "}")
+        call(get(DOCS + "/" + id), REVIEWER, null).andExpect(status().isNotFound());
+        call(put(DOCS + "/" + id), REVIEWER, "{\"expectedVersion\":0,\"data\":" + doc("x") + "}")
                 .andExpect(status().isNotFound());
         call(get("/api/v1/apps"), ADMIN, null).andExpect(jsonPath("$.length()").value(1))
                 .andExpect(jsonPath("$[0].id").value("it-helpdesk"));
@@ -218,28 +218,28 @@ class PlatformApiIntegrationTest {
 
     @Test
     void searchAndPaginationNeverExposeOtherOwnersRecords() throws Exception {
-        for (int i = 0; i < 3; i++) createLeave(EMPLOYEE_A, "alpha trip " + i);
-        String secret = createLeave(EMPLOYEE_B, "beta private matter");
-        createLeave(EMPLOYEE_B, "beta trip");
+        for (int i = 0; i < 3; i++) createDoc(AUTHOR_A, "alpha trip " + i);
+        String secret = createDoc(AUTHOR_B, "beta private matter");
+        createDoc(AUTHOR_B, "beta trip");
 
-        call(get(LEAVES + "?limit=2&offset=0"), EMPLOYEE_A, null).andExpect(jsonPath("$.total").value(3))
+        call(get(DOCS + "?limit=2&offset=0"), AUTHOR_A, null).andExpect(jsonPath("$.total").value(3))
                 .andExpect(jsonPath("$.items.length()").value(2));
-        call(get(LEAVES + "?limit=2&offset=2"), EMPLOYEE_A, null).andExpect(jsonPath("$.total").value(3))
+        call(get(DOCS + "?limit=2&offset=2"), AUTHOR_A, null).andExpect(jsonPath("$.total").value(3))
                 .andExpect(jsonPath("$.items.length()").value(1));
-        call(get(LEAVES + "?q=beta"), EMPLOYEE_A, null).andExpect(jsonPath("$.total").value(0));
-        call(get(LEAVES + "?q=trip"), EMPLOYEE_A, null).andExpect(jsonPath("$.total").value(3));
-        call(get(LEAVES + "?q=%25"), EMPLOYEE_A, null).andExpect(jsonPath("$.total").value(0));
-        call(get(LEAVES + "/" + secret), EMPLOYEE_A, null).andExpect(status().isNotFound());
-        call(put(LEAVES + "/" + secret), EMPLOYEE_A, "{\"expectedVersion\":0,\"data\":" + leave("taken over") + "}")
+        call(get(DOCS + "?q=beta"), AUTHOR_A, null).andExpect(jsonPath("$.total").value(0));
+        call(get(DOCS + "?q=trip"), AUTHOR_A, null).andExpect(jsonPath("$.total").value(3));
+        call(get(DOCS + "?q=%25"), AUTHOR_A, null).andExpect(jsonPath("$.total").value(0));
+        call(get(DOCS + "/" + secret), AUTHOR_A, null).andExpect(status().isNotFound());
+        call(put(DOCS + "/" + secret), AUTHOR_A, "{\"expectedVersion\":0,\"data\":" + doc("taken over") + "}")
                 .andExpect(status().isNotFound());
-        call(delete(LEAVES + "/" + secret + "?expectedVersion=0"), EMPLOYEE_A, null).andExpect(status().isNotFound());
+        call(delete(DOCS + "/" + secret + "?expectedVersion=0"), AUTHOR_A, null).andExpect(status().isNotFound());
 
-        call(get(LEAVES + "?q=trip"), MANAGER, null).andExpect(jsonPath("$.total").value(4));
-        call(get(LEAVES), MANAGER, null).andExpect(jsonPath("$.total").value(5));
-        // Manager may update any leave request but has no delete grant.
-        call(put(LEAVES + "/" + secret), MANAGER, "{\"expectedVersion\":0,\"data\":" + leave("approved note") + "}")
+        call(get(DOCS + "?q=trip"), REVIEWER, null).andExpect(jsonPath("$.total").value(4));
+        call(get(DOCS), REVIEWER, null).andExpect(jsonPath("$.total").value(5));
+        // Reviewer may update any document but has no delete grant.
+        call(put(DOCS + "/" + secret), REVIEWER, "{\"expectedVersion\":0,\"data\":" + doc("approved note") + "}")
                 .andExpect(status().isOk());
-        call(delete(LEAVES + "/" + secret + "?expectedVersion=1"), MANAGER, null).andExpect(status().isForbidden());
+        call(delete(DOCS + "/" + secret + "?expectedVersion=1"), REVIEWER, null).andExpect(status().isForbidden());
     }
 
     @Test
@@ -260,11 +260,40 @@ class PlatformApiIntegrationTest {
         assertThat(paths.path("/api/v1/apps/{appId}/entities/{entity}").has("get")).isTrue();
         assertThat(paths.path("/api/v1/apps/{appId}/entities/{entity}/records").has("get")).isTrue();
         assertThat(paths.path("/api/v1/apps/{appId}/entities/{entity}/records").has("post")).isTrue();
+        assertThat(paths.path("/api/v1/apps/{appId}/entities/{entity}/records")
+                .path("post").path("responses").has("201")).isTrue();
         JsonNode item = paths.path("/api/v1/apps/{appId}/entities/{entity}/records/{id}");
         assertThat(item.has("get") && item.has("put") && item.has("delete")).isTrue();
+        assertThat(item.path("delete").path("responses").has("204")).isTrue();
         assertThat(paths.fieldNames()).toIterable().allMatch(path -> path.startsWith("/api/v1/apps"));
         assertThat(document.path("components").path("securitySchemes").path("bearer").path("scheme").asText())
                 .isEqualTo("bearer");
+    }
+
+    /**
+     * The reviewed contract for integrators lives in docs/api/openapi-v1.json. This fails when the running
+     * application's OpenAPI differs from it; regenerate with OPENAPI_UPDATE=true and review the diff.
+     */
+    @Test
+    void committedOpenApiArtifactMatchesTheRunningApplication() throws Exception {
+        JsonNode document = body(call(get("/v3/api-docs"), REQUESTER, null).andExpect(status().isOk()));
+        ((com.fasterxml.jackson.databind.node.ObjectNode) document).remove("servers");
+        var sorted = json.copy().configure(com.fasterxml.jackson.databind.SerializationFeature.ORDER_MAP_ENTRIES_BY_KEYS, true)
+                .enable(com.fasterxml.jackson.databind.SerializationFeature.INDENT_OUTPUT);
+        String canonical = lf(sorted.writeValueAsString(sorted.treeToValue(document, Object.class)));
+        java.nio.file.Path artifact = java.nio.file.Path.of("..", "docs", "api", "openapi-v1.json");
+        if ("true".equals(System.getenv("OPENAPI_UPDATE"))) {
+            java.nio.file.Files.createDirectories(artifact.getParent());
+            java.nio.file.Files.writeString(artifact, canonical);
+        }
+        assertThat(lf(java.nio.file.Files.readString(artifact)))
+                .as("docs/api/openapi-v1.json is stale; run with OPENAPI_UPDATE=true").isEqualTo(canonical);
+        assertThat(document.path("paths").size()).isEqualTo(9);
+    }
+
+    /** Line-ending neutral text with exactly one trailing line feed. */
+    private static String lf(String text) {
+        return String.join(String.valueOf((char) 10), text.lines().toList()) + (char) 10;
     }
 
     @Test
@@ -278,8 +307,8 @@ class PlatformApiIntegrationTest {
                 .andExpect(status().isCreated())).path("id").asText();
     }
 
-    private String createLeave(String token, String reason) throws Exception {
-        return body(call(post(LEAVES), token, "{\"data\":" + leave(reason) + "}")
+    private String createDoc(String token, String summary) throws Exception {
+        return body(call(post(DOCS), token, "{\"data\":" + doc(summary) + "}")
                 .andExpect(status().isCreated())).path("id").asText();
     }
 
@@ -287,8 +316,8 @@ class PlatformApiIntegrationTest {
         return "{\"code\":\"" + code + "\",\"name\":\"" + name + "\",\"active\":true}";
     }
 
-    private static String leave(String reason) {
-        return "{\"kind\":\"ANNUAL\",\"startDate\":\"2026-12-01\",\"days\":2,\"reason\":\"" + reason + "\"}";
+    private static String doc(String summary) {
+        return "{\"kind\":\"MEMO\",\"due\":\"2026-12-01\",\"pages\":2,\"summary\":\"" + summary + "\"}";
     }
 
     private ResultActions call(MockHttpServletRequestBuilder request, String token, String body) throws Exception {

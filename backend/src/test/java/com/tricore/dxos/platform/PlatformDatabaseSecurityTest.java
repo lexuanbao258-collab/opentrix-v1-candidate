@@ -103,6 +103,32 @@ class PlatformDatabaseSecurityTest {
     }
 
     @Test
+    void upgradeFromV1KeepsExistingRowsValidAndAddsWorkflowColumns() throws Exception {
+        var v1 = PlatformTestDatabase.freshWithoutMigration();
+        PlatformMigration.flyway(v1.owner(), PlatformTestDatabase.RUNTIME).target("1").load().migrate();
+        var owner = v1.ownerSql();
+        owner.update("INSERT INTO opentrix_platform.applications (app_key, app_version, manifest, manifest_sha256) VALUES ('legacy-app', '1.0.0', '{}', repeat('b', 64))");
+        owner.update("INSERT INTO opentrix_platform.entity_definitions (app_key, entity_key, record_schema, permissions) VALUES ('legacy-app', 'thing', '{}', '{}')");
+        owner.update("""
+                INSERT INTO opentrix_platform.records (record_id, tenant_id, app_key, entity_key, data, created_by, created_at, updated_by, updated_at)
+                VALUES ('00000000-0000-4000-8000-000000000001', 'default', 'legacy-app', 'thing', '{"a":1}', 'u', now(), 'u', now())""");
+        owner.update("""
+                INSERT INTO opentrix_platform.audit_events (tenant_id, app_key, entity_key, record_id, action, actor_id, record_version, after_data)
+                VALUES ('default', 'legacy-app', 'thing', '00000000-0000-4000-8000-000000000001', 'CREATE', 'u', 0, '{"a":1}')""");
+
+        PlatformMigration.flyway(v1.owner(), PlatformTestDatabase.RUNTIME).load().migrate();
+
+        assertThat(owner.queryForObject("SELECT workflow_state IS NULL AND data->>'a' = '1' FROM opentrix_platform.records", Boolean.class)).isTrue();
+        assertThat(owner.queryForObject("SELECT actor_type || ':' || action FROM opentrix_platform.audit_events", String.class)).isEqualTo("USER:CREATE");
+        PlatformRuntimeGuard.verify(v1.runtimeSql());
+        // the new audit shape rules are enforced after the upgrade
+        assertThatThrownBy(() -> owner.update("""
+                INSERT INTO opentrix_platform.audit_events (tenant_id, app_key, entity_key, record_id, action, actor_id, record_version, before_data)
+                VALUES ('default', 'legacy-app', 'thing', '00000000-0000-4000-8000-000000000001', 'TRANSITION', 'u', 1, '{"a":1}')"""))
+                .rootCause().hasMessageContaining("audit_events_shape_valid");
+    }
+
+    @Test
     void runtimeGuardRejectsUnexpectedTriggers() {
         var owner = DB.ownerSql();
         owner.execute("""

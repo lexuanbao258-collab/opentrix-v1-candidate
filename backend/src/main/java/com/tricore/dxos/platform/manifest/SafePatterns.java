@@ -8,11 +8,12 @@ import java.util.Optional;
  * Finite, backtracking-safe subset of regular expressions for manifest {@code pattern} keywords.
  * Allowed: optional ^ and $, literals, '.', escapes \d \w \s \. \- \/, character classes of literals/ranges,
  * and per-atom quantifiers ? or {n} or {n,m} (m <= 256). Rejected: groups, alternation, * + {n,},
- * back-references, look-around. With no groups, quantifiers cannot nest, and at most
- * {@value #MAX_VARIABLE_ATOMS} variable-width atoms bound the worst case to 256^3 steps per input.
+ * back-references, look-around. With no groups, quantifiers cannot nest. The product of
+ * the possible widths is limited to {@value #MAX_WIDTH_COMBINATIONS} per starting position.
  */
 public final class SafePatterns {
     static final int MAX_VARIABLE_ATOMS = 3;
+    static final int MAX_WIDTH_COMBINATIONS = 256;
     static final int MAX_BOUND = 256;
     static final int MAX_ATOMS = 64;
     private static final String LITERALS = "_-:/ @,;=%#&'";
@@ -26,6 +27,7 @@ public final class SafePatterns {
         int end = pattern.endsWith("$") && pattern.length() > index ? pattern.length() - 1 : pattern.length();
         int atoms = 0;
         int variable = 0;
+        int widthCombinations = 1;
         while (index < end) {
             char c = pattern.charAt(index);
             if (c == '[') {
@@ -47,6 +49,7 @@ public final class SafePatterns {
                 char q = pattern.charAt(index);
                 if (q == '?') {
                     variable++;
+                    widthCombinations *= 2;
                     index++;
                 } else if (q == '{') {
                     int close = pattern.indexOf('}', index);
@@ -62,6 +65,7 @@ public final class SafePatterns {
                         return Optional.of("quantifier bound too large");
                     }
                     if (max != min) variable++;
+                    widthCombinations *= max - min + 1;
                     index = close + 1;
                 }
                 if (index < end && "?*+{".indexOf(pattern.charAt(index)) >= 0) {
@@ -69,6 +73,7 @@ public final class SafePatterns {
                 }
             }
             if (variable > MAX_VARIABLE_ATOMS) return Optional.of("too many variable-width atoms");
+            if (widthCombinations > MAX_WIDTH_COMBINATIONS) return Optional.of("too many possible quantifier widths");
         }
         return Optional.empty();
     }

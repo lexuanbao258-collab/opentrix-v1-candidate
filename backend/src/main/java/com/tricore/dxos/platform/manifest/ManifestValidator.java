@@ -72,6 +72,18 @@ public final class ManifestValidator {
 
     /** Record validation errors keyed by JSON Pointer-like instance location. Empty means valid. */
     public static Map<String, String> validateRecord(Schema schema, JsonNode data) {
+        Map<String, String> oversized = new TreeMap<>();
+        for (var field : schema.getSchemaNode().path("properties").properties()) {
+            JsonNode value = data.path(field.getKey());
+            if (field.getValue().has("pattern") && value.isTextual()) {
+                String text = value.textValue();
+                int max = field.getValue().path("maxLength").asInt();
+                if (text.codePointCount(0, text.length()) > max) {
+                    oversized.put("/" + field.getKey(), "must have at most " + max + " characters");
+                }
+            }
+        }
+        if (!oversized.isEmpty()) return oversized;
         return errors(schema, data);
     }
 
@@ -126,12 +138,80 @@ public final class ManifestValidator {
             } catch (RuntimeException invalid) {
                 problems.add("/entities/" + key + "/schema: cannot be compiled");
             }
+            Set<String> sensitive = new LinkedHashSet<>();
+            for (var field : properties.properties()) {
+                if (field.getValue().path("sensitive").asBoolean(false)) sensitive.add(field.getKey());
+            }
+            AppManifest.Workflow workflow = workflow(app(document), key, entity.path("workflow"), roles, problems);
             entities.put(key, new AppManifest.Entity(key, schema.deepCopy(), List.copyOf(search),
-                    Map.copyOf(permissions)));
+                    Set.copyOf(sensitive), Map.copyOf(permissions), workflow));
         }
         if (!problems.isEmpty()) throw new ManifestException(problems);
         return new AppManifest(document.path("id").asText(), document.path("version").asText(), sha256,
                 document.deepCopy(), Set.copyOf(roles), java.util.Collections.unmodifiableMap(entities));
+    }
+
+    private static String app(JsonNode document) {
+        return document.path("id").asText();
+    }
+
+    /** Builds the reused core definition (which re-validates structure) plus Platform grants; null when absent. */
+    private static AppManifest.Workflow workflow(String appId, String entityKey, JsonNode node, Set<String> roles,
+                                                 List<String> problems) {
+        if (node.isMissingNode()) return null;
+        String where = "/entities/" + entityKey + "/workflow";
+        Set<String> states = new LinkedHashSet<>();
+        Map<String, Boolean> editable = new LinkedHashMap<>();
+        for (var state : node.path("states").properties()) {
+            states.add(state.getKey());
+            editable.put(state.getKey(), state.getValue().path("editable").asBoolean(true));
+        }
+        Set<com.tricore.dxos.core.workflow.WorkflowTransition> transitions = new LinkedHashSet<>();
+        Map<String, Map<String, AppManifest.Scope>> grants = new LinkedHashMap<>();
+        for (var transition : node.path("transitions").properties()) {
+            String from = transition.getValue().path("from").asText();
+            String to = transition.getValue().path("to").asText();
+            if (!states.contains(from) || !states.contains(to)) {
+                problems.add(where + "/transitions/" + transition.getKey() + ": unknown state");
+                continue;
+            }
+            if (from.equals(to)) problems.add(where + "/transitions/" + transition.getKey() + ": from and to must differ");
+            Map<String, AppManifest.Scope> roleScopes = new LinkedHashMap<>();
+            for (var grant : transition.getValue().path("roles").properties()) {
+                if (!roles.contains(grant.getKey())) {
+                    problems.add(where + "/transitions/" + transition.getKey() + "/roles: undeclared role " + grant.getKey());
+                }
+                roleScopes.put(grant.getKey(), AppManifest.Scope.valueOf(grant.getValue().asText().toUpperCase(Locale.ROOT)));
+            }
+            if (roleScopes.isEmpty()) problems.add(where + "/transitions/" + transition.getKey() + "/roles: at least one role is required");
+            grants.put(transition.getKey(), Map.copyOf(roleScopes));
+            transitions.add(new com.tricore.dxos.core.workflow.WorkflowTransition(transition.getKey(), from, to));
+        }
+        String initial = node.path("initialState").asText();
+        if (!states.contains(initial)) {
+            problems.add(where + "/initialState: unknown state");
+            return null;
+        }
+        com.tricore.dxos.core.workflow.WorkflowDefinition definition;
+        try {
+            definition = new com.tricore.dxos.core.workflow.WorkflowDefinition(appId + "/" + entityKey, 1, initial, states, transitions);
+        } catch (RuntimeException invalid) {
+            problems.add(where + ": invalid state machine");
+            return null;
+        }
+        if (definition.isTerminal(initial)) problems.add(where + "/initialState: must have an outgoing transition");
+        Set<String> reachable = new LinkedHashSet<>(Set.of(initial));
+        boolean grew = true;
+        while (grew) {
+            grew = false;
+            for (var transition : transitions) {
+                if (reachable.contains(transition.sourceState()) && reachable.add(transition.targetState())) grew = true;
+            }
+        }
+        for (String state : states) {
+            if (!reachable.contains(state)) problems.add(where + "/states/" + state + ": unreachable from the initial state");
+        }
+        return new AppManifest.Workflow(definition, Map.copyOf(editable), Map.copyOf(grants));
     }
 
     private static Map<String, String> errors(Schema schema, JsonNode instance) {

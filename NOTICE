@@ -60,3 +60,6 @@ lexuanbao258-collab/opentrix-v1-candidate adds a Platform module (application
 registry, generic records, audit), authored by lexuanbao258-collab with AI
 assistance (Claude). Its application manifest frame is adapted from upstream
 commit 1ec99ad (Phan Hai Yen, Apache-2.0). Upstream copyright notices are kept.
+
+Candidate M2 extends the Platform with manifest-driven workflows, audit
+reads and an external REST client, with AI assistance from Claude and Codex.

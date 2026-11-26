@@ -7,7 +7,8 @@ import java.util.Map;
 /** Expected Platform outcomes mapped to HTTP by the API layer; messages are safe to return. */
 public final class PlatformException extends RuntimeException {
     public enum Code {
-        NOT_FOUND(404), FORBIDDEN(403), VERSION_CONFLICT(409), VALIDATION_FAILED(400);
+        NOT_FOUND(404), FORBIDDEN(403), VERSION_CONFLICT(409), VALIDATION_FAILED(400),
+        TRANSITION_NOT_ALLOWED(409), STATE_LOCKED(409), COMMIT_OUTCOME_UNKNOWN(503);
 
         public final int status;
 

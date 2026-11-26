@@ -25,7 +25,7 @@ import java.util.TreeSet;
 @Component
 @ConditionalOnProperty(name = "opentrix.platform.enabled", havingValue = "true")
 public class PlatformRuntimeGuard {
-    static final String EXPECTED_SCHEMA_VERSION = "1";
+    static final String EXPECTED_SCHEMA_VERSION = "2";
     private static final List<String> PRIVILEGES =
             List.of("SELECT", "INSERT", "UPDATE", "DELETE", "TRUNCATE", "REFERENCES", "TRIGGER");
     static final Map<String, Set<String>> EXPECTED = Map.of(

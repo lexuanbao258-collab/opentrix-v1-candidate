@@ -48,6 +48,18 @@
         {
           "name": "it-helpdesk:requester",
           "description": "IT Helpdesk app role: requester (Platform API)"
+        },
+        {
+          "name": "hr-leave:employee",
+          "description": "HR Leave app role: employee (own leave requests)"
+        },
+        {
+          "name": "hr-leave:manager",
+          "description": "HR Leave app role: manager (reads all, approves or rejects)"
+        },
+        {
+          "name": "hr-leave:auditor",
+          "description": "HR Leave app role: auditor (reads the audit trail)"
         }
       ]
     }
@@ -145,6 +157,80 @@
         "acr"
       ],
       "optionalClientScopes": []
+    },
+    {
+      "clientId": "hr-employee-bot",
+      "name": "HR employee integration (machine identity)",
+      "description": "External client for the Platform API (client_credentials only). Secret is set at runtime from .env.",
+      "enabled": true,
+      "publicClient": false,
+      "clientAuthenticatorType": "client-secret",
+      "standardFlowEnabled": false,
+      "implicitFlowEnabled": false,
+      "directAccessGrantsEnabled": false,
+      "serviceAccountsEnabled": true,
+      "fullScopeAllowed": false,
+      "redirectUris": [],
+      "webOrigins": [],
+      "protocolMappers": [
+        {
+          "name": "audience-tricore-api",
+          "protocol": "openid-connect",
+          "protocolMapper": "oidc-audience-mapper",
+          "consentRequired": false,
+          "config": {
+            "included.client.audience": "tricore-api",
+            "access.token.claim": "true",
+            "id.token.claim": "false",
+            "introspection.token.claim": "true"
+          }
+        }
+      ],
+      "defaultClientScopes": [
+        "basic",
+        "roles",
+        "profile",
+        "web-origins",
+        "acr"
+      ],
+      "optionalClientScopes": []
+    },
+    {
+      "clientId": "hr-approver-bot",
+      "name": "HR approver integration (machine identity)",
+      "description": "External client for the Platform API (client_credentials only). Secret is set at runtime from .env.",
+      "enabled": true,
+      "publicClient": false,
+      "clientAuthenticatorType": "client-secret",
+      "standardFlowEnabled": false,
+      "implicitFlowEnabled": false,
+      "directAccessGrantsEnabled": false,
+      "serviceAccountsEnabled": true,
+      "fullScopeAllowed": false,
+      "redirectUris": [],
+      "webOrigins": [],
+      "protocolMappers": [
+        {
+          "name": "audience-tricore-api",
+          "protocol": "openid-connect",
+          "protocolMapper": "oidc-audience-mapper",
+          "consentRequired": false,
+          "config": {
+            "included.client.audience": "tricore-api",
+            "access.token.claim": "true",
+            "id.token.claim": "false",
+            "introspection.token.claim": "true"
+          }
+        }
+      ],
+      "defaultClientScopes": [
+        "basic",
+        "roles",
+        "profile",
+        "web-origins",
+        "acr"
+      ],
+      "optionalClientScopes": []
     }
   ],
   "clientScopeMappings": {
@@ -165,6 +251,19 @@
         "client": "gateway-monitor",
         "roles": [
           "workflow:read"
+        ]
+      },
+      {
+        "client": "hr-employee-bot",
+        "roles": [
+          "hr-leave:employee"
+        ]
+      },
+      {
+        "client": "hr-approver-bot",
+        "roles": [
+          "hr-leave:manager",
+          "hr-leave:auditor"
         ]
       }
     ]
@@ -235,6 +334,29 @@
       "clientRoles": {
         "tricore-api": [
           "workflow:read"
+        ]
+      }
+    },
+    {
+      "username": "service-account-hr-employee-bot",
+      "enabled": true,
+      "serviceAccountClientId": "hr-employee-bot",
+      "realmRoles": [],
+      "clientRoles": {
+        "tricore-api": [
+          "hr-leave:employee"
+        ]
+      }
+    },
+    {
+      "username": "service-account-hr-approver-bot",
+      "enabled": true,
+      "serviceAccountClientId": "hr-approver-bot",
+      "realmRoles": [],
+      "clientRoles": {
+        "tricore-api": [
+          "hr-leave:manager",
+          "hr-leave:auditor"
         ]
       }
     }

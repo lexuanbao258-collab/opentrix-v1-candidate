@@ -62,13 +62,28 @@ public final class PlatformTestDatabase {
                 source(name, RUNTIME, PASSWORD), registered);
     }
 
-    /** IT Helpdesk from the repository plus the test-only HR Leave manifest used for cross-app checks. */
+    /** Empty database with the role split and the schema owned by the owner role, but no migration applied. */
+    public static synchronized Database freshWithoutMigration() {
+        String name = "platform_" + UUID.randomUUID().toString().replace("-", "");
+        var admin = new JdbcTemplate(server().getPostgresDatabase());
+        admin.execute("CREATE DATABASE " + name);
+        admin.execute("REVOKE ALL ON DATABASE " + name + " FROM PUBLIC");
+        admin.execute("GRANT CONNECT ON DATABASE " + name + " TO " + OWNER + ", " + RUNTIME);
+        DataSource superuser = source(name, "postgres", "");
+        var setup = new JdbcTemplate(superuser);
+        setup.execute("REVOKE ALL ON SCHEMA public FROM PUBLIC");
+        setup.execute("CREATE SCHEMA opentrix_platform AUTHORIZATION " + OWNER);
+        return new Database(name, server().getJdbcUrl(RUNTIME, name), superuser, source(name, OWNER, PASSWORD),
+                source(name, RUNTIME, PASSWORD), List.of());
+    }
+
+    /** IT Helpdesk from the repository plus the test-only docflow fixture (workflow, sensitive field, audit grant, cross-app checks). */
     public static Path manifestDirectory() {
         try {
             Path directory = Files.createTempDirectory("opentrix-manifests");
             copy(Path.of("..", "apps", "it-helpdesk", "app.json"), directory.resolve("it-helpdesk"));
-            copy(Path.of("src", "test", "resources", "platform", "manifests", "hr-leave", "app.json"),
-                    directory.resolve("hr-leave"));
+            copy(Path.of("src", "test", "resources", "platform", "manifests", "docflow", "app.json"),
+                    directory.resolve("docflow"));
             return directory;
         } catch (IOException failure) {
             throw new IllegalStateException(failure);

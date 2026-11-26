@@ -52,7 +52,7 @@ jobs:
         run: rm -rf build/test-results/test
       - name: Build and unit tests
         run: ./gradlew build --no-daemon --stacktrace --rerun-tasks
-      - name: Confirm identity and gateway security suites executed
+      - name: Confirm identity, gateway and Platform security suites executed
         run: |
           python3 - <<'PY'
           import pathlib
@@ -60,7 +60,10 @@ jobs:
           root = pathlib.Path("build/test-results/test")
           for simple in ("GatewayIdentityHandoffHttpTest",
                          "SpringSecurityCurrentPrincipalTest",
-                         "WorkflowHttpExposureTest"):
+                         "WorkflowHttpExposureTest",
+                         "PlatformApiIntegrationTest",
+                         "PlatformDatabaseSecurityTest",
+                         "PlatformWorkflowIntegrationTest"):
               matches = list(root.glob("TEST-*." + simple + ".xml"))
               assert len(matches) == 1, (simple, len(matches))
               suite = ET.parse(matches[0]).getroot()
@@ -70,7 +73,7 @@ jobs:
                   values[k] == 0 for k in ("failures", "errors", "skipped")
               ), (simple, values)
               print(simple, values)
-          print("IDENTITY_GATEWAY_MOCKED_FILTER_HANDOFF_PASS")
+          print("IDENTITY_GATEWAY_AND_PLATFORM_TESTS_PASS")
           PY
       - name: Upload test reports
         if: failure()
@@ -137,6 +140,8 @@ jobs:
           npm ci
           npm run build
           npm test
+      - name: Test the external Platform CLI
+        run: node --test clients/opentrix-cli/opentrix.test.mjs
 
   r23-compliance:
     runs-on: ubuntu-24.04

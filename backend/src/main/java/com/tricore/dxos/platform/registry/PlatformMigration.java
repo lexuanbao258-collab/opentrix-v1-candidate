@@ -45,15 +45,19 @@ public final class PlatformMigration {
         if (!runtimeRole.matches("[a-z][a-z0-9_]{0,62}")) throw new IllegalArgumentException("Invalid runtime role name");
         List<AppManifest> manifests = readManifests(manifestDirectory);
         requireNoEventTriggers(owner);
-        Flyway.configure().dataSource(owner)
+        flyway(owner, runtimeRole).load().migrate();
+        return ManifestRegistrar.register(owner, manifests);
+    }
+
+    /** The only supported Flyway configuration for the Platform schema (also used by upgrade tests). */
+    public static org.flywaydb.core.api.configuration.FluentConfiguration flyway(DataSource owner, String runtimeRole) {
+        return Flyway.configure().dataSource(owner)
                 .locations("classpath:db/platform")
                 .schemas(SCHEMA).defaultSchema(SCHEMA).createSchemas(false)
                 .table(HISTORY_TABLE)
                 .placeholders(Map.of("runtimeRole", runtimeRole))
                 .cleanDisabled(true).baselineOnMigrate(false).outOfOrder(false)
-                .validateMigrationNaming(true).executeInTransaction(true)
-                .load().migrate();
-        return ManifestRegistrar.register(owner, manifests);
+                .validateMigrationNaming(true).executeInTransaction(true);
     }
 
     static List<AppManifest> readManifests(Path directory) {

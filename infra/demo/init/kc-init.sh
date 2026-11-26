@@ -31,6 +31,8 @@ echo "login theme: opentrix (locale vi)"
 
 set_secret dxos-portal-bff-local "$PORTAL_OIDC_CLIENT_SECRET"
 set_secret gateway-monitor "$GATEWAY_MONITOR_CLIENT_SECRET"
+set_secret hr-employee-bot "$EXTERNAL_EMPLOYEE_SECRET"
+set_secret hr-approver-bot "$EXTERNAL_APPROVER_SECRET"
 
 $KC set-password -r tricore --config $CFG --username employee-demo --new-password "$DEMO_EMPLOYEE_PASSWORD"
 $KC set-password -r tricore --config $CFG --username coordinator-demo --new-password "$DEMO_COORDINATOR_PASSWORD"

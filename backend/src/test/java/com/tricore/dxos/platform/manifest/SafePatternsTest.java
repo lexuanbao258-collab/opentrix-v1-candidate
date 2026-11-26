@@ -28,7 +28,8 @@ class SafePatternsTest {
 
     @Test
     void worstCaseAcceptedPatternFinishesQuickly() {
-        String worst = "^[a-z]{0,256}[a-z]{0,256}[a-z]{0,256}$";
+        assertThat(SafePatterns.violation("[a-z]{0,256}[a-z]{0,256}")).isPresent();
+        String worst = "[a-z]{0,15}[a-z]{0,15}Z";
         assertThat(SafePatterns.violation(worst)).isEmpty();
         String input = "a".repeat(1000) + "!";
         assertTimeoutPreemptively(Duration.ofSeconds(5), () -> Pattern.compile(worst).matcher(input).find());

@@ -1,0 +1,52 @@
+{
+  "id": "docflow",
+  "version": "0.1.0",
+  "license": "Apache-2.0",
+  "name": { "en": "Document flow (test fixture, not a product app)" },
+  "roles": {
+    "author": { "name": { "en": "Author" } },
+    "reviewer": { "name": { "en": "Reviewer" } },
+    "auditor": { "name": { "en": "Auditor" } }
+  },
+  "entities": {
+    "document": {
+      "name": { "en": "Document" },
+      "schema": {
+        "type": "object",
+        "additionalProperties": false,
+        "required": ["kind", "due", "summary"],
+        "properties": {
+          "kind": { "type": "string", "enum": ["MEMO", "REPORT"] },
+          "due": { "type": "string", "format": "date" },
+          "pages": { "type": "integer", "minimum": 1, "maximum": 500 },
+          "summary": { "type": "string", "minLength": 1, "maxLength": 500, "sensitive": true }
+        }
+      },
+      "search": ["summary"],
+      "permissions": {
+        "read": { "author": "own", "reviewer": "all", "auditor": "all" },
+        "create": { "author": "own" },
+        "update": { "author": "own", "reviewer": "all" },
+        "delete": { "author": "own" },
+        "audit": { "auditor": "all" }
+      },
+      "workflow": {
+        "initialState": "DRAFT",
+        "states": {
+          "DRAFT": { "name": { "en": "Draft" } },
+          "REVIEW": { "name": { "en": "In review" }, "editable": false },
+          "PUBLISHED": { "name": { "en": "Published" }, "editable": false },
+          "REJECTED": { "name": { "en": "Rejected" }, "editable": false },
+          "WITHDRAWN": { "name": { "en": "Withdrawn" }, "editable": false }
+        },
+        "transitions": {
+          "submit": { "from": "DRAFT", "to": "REVIEW", "roles": { "author": "own" } },
+          "discard": { "from": "DRAFT", "to": "WITHDRAWN", "roles": { "author": "own" } },
+          "approve": { "from": "REVIEW", "to": "PUBLISHED", "roles": { "reviewer": "all" } },
+          "reject": { "from": "REVIEW", "to": "REJECTED", "roles": { "reviewer": "all" } },
+          "withdraw": { "from": "REVIEW", "to": "WITHDRAWN", "roles": { "author": "own" } }
+        }
+      }
+    }
+  }
+}

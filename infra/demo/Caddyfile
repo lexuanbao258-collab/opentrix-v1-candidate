@@ -22,14 +22,31 @@ https://localhost:8443 {
 		}
 	}
 
-	# Không bao giờ mở API Java riêng qua ingress của trình duyệt.
-	handle /api/* {
-		respond 404
-	}
-
-	handle {
-		root * /srv/portal
-		try_files {path} /index.html
-		file_server
+	# Keep these method/path pairs in sync with docs/api/openapi-v1.json.
+	@platform <<CEL
+		(method('GET') && path_regexp(r'^/api/v1/apps(?:/[a-z0-9-]+(?:/entities/[A-Za-z0-9_]+(?:/(?:audit|records(?:/[0-9A-Fa-f-]+(?:/(?:workflow|history))?)?))?)?)?$'))
+		|| (method('POST') && path_regexp(r'^/api/v1/apps/[a-z0-9-]+/entities/[A-Za-z0-9_]+/records(?:/[0-9A-Fa-f-]+/transitions/[A-Za-z0-9_]+)?$'))
+		|| (method('PUT', 'DELETE') && path_regexp(r'^/api/v1/apps/[a-z0-9-]+/entities/[A-Za-z0-9_]+/records/[0-9A-Fa-f-]+$'))
+		CEL
+	@api path /api /api/* /v3 /v3/*
+	route {
+		handle @platform {
+			request_body {
+				max_size 128KiB
+			}
+			reverse_proxy 127.0.0.1:8080 {
+				header_up -Cookie
+				header_up -X-Forwarded-For
+				header_up -Forwarded
+			}
+		}
+		handle @api {
+			respond 404
+		}
+		handle {
+			root * /srv/portal
+			try_files {path} /index.html
+			file_server
+		}
 	}
 }

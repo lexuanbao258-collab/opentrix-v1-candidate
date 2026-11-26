@@ -31,6 +31,9 @@ fi
 
 # .env cu (truoc Platform) chua co mat khau owner cua Platform: bo sung, khong doi gia tri khac.
 grep -q '^PLATFORM_OWNER_PASSWORD=' .env || { umask 077; echo "PLATFORM_OWNER_PASSWORD=$(openssl rand -hex 16)" >> .env; }
+for v in EXTERNAL_EMPLOYEE_SECRET EXTERNAL_APPROVER_SECRET; do
+  grep -q "^$v=" .env || { umask 077; echo "$v=$(openssl rand -hex 16)" >> .env; }
+done
 
 echo "== build + chay (lan dau mat 5-10 phut)"
 $C up -d --build

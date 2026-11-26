@@ -141,7 +141,8 @@ SPDX-License-Identifier = "Apache-2.0"
 path = [
   "apps/**/app.json",
   "backend/src/main/resources/platform/app-manifest.schema.json",
-  "backend/src/test/resources/platform/manifests/**/app.json"
+  "backend/src/test/resources/platform/manifests/**/app.json",
+  "docs/api/openapi-v1.json"
 ]
 precedence = "closest"
 SPDX-FileCopyrightText = "2026 TRICORE contributors"

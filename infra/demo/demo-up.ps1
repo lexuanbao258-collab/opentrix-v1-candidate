@@ -34,6 +34,11 @@ if (-not (Test-Path .env)) {
 if (-not (Select-String -Path .env -Pattern '^PLATFORM_OWNER_PASSWORD=' -Quiet)) {
     Add-Content -Path .env -Value "PLATFORM_OWNER_PASSWORD=$([System.Security.Cryptography.RandomNumberGenerator]::GetHexString(32).ToLower())" -Encoding utf8NoBOM
 }
+foreach ($name in 'EXTERNAL_EMPLOYEE_SECRET', 'EXTERNAL_APPROVER_SECRET') {
+    if (-not (Select-String -Path .env -Pattern "^$name=" -Quiet)) {
+        Add-Content -Path .env -Value "$name=$([System.Security.Cryptography.RandomNumberGenerator]::GetHexString(32).ToLower())" -Encoding utf8NoBOM
+    }
+}
 
 Write-Host '== build + chay (lan dau mat 5-10 phut)'
 docker @compose up -d --build
