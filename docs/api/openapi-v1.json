@@ -12,6 +12,27 @@
         },
         "type" : "object"
       },
+      "ApiError" : {
+        "properties" : {
+          "code" : {
+            "type" : "string"
+          },
+          "errors" : {
+            "additionalProperties" : {
+              "type" : "string"
+            },
+            "type" : "object"
+          },
+          "message" : {
+            "type" : "string"
+          },
+          "status" : {
+            "format" : "int32",
+            "type" : "integer"
+          }
+        },
+        "type" : "object"
+      },
       "AppResponse" : {
         "properties" : {
           "callerRoles" : {
@@ -121,6 +142,7 @@
             "$ref" : "#/components/schemas/JsonNode"
           }
         },
+        "required" : [ "data" ],
         "type" : "object"
       },
       "EntityResponse" : {
@@ -331,7 +353,7 @@
             "type" : "integer"
           }
         },
-        "required" : [ "expectedVersion" ],
+        "required" : [ "data", "expectedVersion" ],
         "type" : "object"
       },
       "WorkflowResponse" : {
@@ -409,6 +431,16 @@
               }
             },
             "description" : "OK"
+          },
+          "401" : {
+            "content" : {
+              "application/json" : {
+                "schema" : {
+                  "$ref" : "#/components/schemas/ApiError"
+                }
+              }
+            },
+            "description" : "Missing or invalid bearer token"
           }
         },
         "security" : [ {
@@ -439,6 +471,16 @@
               }
             },
             "description" : "OK"
+          },
+          "401" : {
+            "content" : {
+              "application/json" : {
+                "schema" : {
+                  "$ref" : "#/components/schemas/ApiError"
+                }
+              }
+            },
+            "description" : "Missing or invalid bearer token"
           }
         },
         "security" : [ {
@@ -476,6 +518,16 @@
               }
             },
             "description" : "OK"
+          },
+          "401" : {
+            "content" : {
+              "application/json" : {
+                "schema" : {
+                  "$ref" : "#/components/schemas/ApiError"
+                }
+              }
+            },
+            "description" : "Missing or invalid bearer token"
           }
         },
         "security" : [ {
@@ -543,6 +595,16 @@
               }
             },
             "description" : "OK"
+          },
+          "401" : {
+            "content" : {
+              "application/json" : {
+                "schema" : {
+                  "$ref" : "#/components/schemas/ApiError"
+                }
+              }
+            },
+            "description" : "Missing or invalid bearer token"
           }
         },
         "security" : [ {
@@ -611,6 +673,16 @@
               }
             },
             "description" : "OK"
+          },
+          "401" : {
+            "content" : {
+              "application/json" : {
+                "schema" : {
+                  "$ref" : "#/components/schemas/ApiError"
+                }
+              }
+            },
+            "description" : "Missing or invalid bearer token"
           }
         },
         "security" : [ {
@@ -657,6 +729,16 @@
               }
             },
             "description" : "Created"
+          },
+          "401" : {
+            "content" : {
+              "application/json" : {
+                "schema" : {
+                  "$ref" : "#/components/schemas/ApiError"
+                }
+              }
+            },
+            "description" : "Missing or invalid bearer token"
           }
         },
         "security" : [ {
@@ -704,6 +786,26 @@
         "responses" : {
           "204" : {
             "description" : "No Content"
+          },
+          "401" : {
+            "content" : {
+              "application/json" : {
+                "schema" : {
+                  "$ref" : "#/components/schemas/ApiError"
+                }
+              }
+            },
+            "description" : "Missing or invalid bearer token"
+          },
+          "409" : {
+            "content" : {
+              "application/json" : {
+                "schema" : {
+                  "$ref" : "#/components/schemas/ApiError"
+                }
+              }
+            },
+            "description" : "VERSION_CONFLICT or STATE_LOCKED"
           }
         },
         "security" : [ {
@@ -747,6 +849,16 @@
               }
             },
             "description" : "OK"
+          },
+          "401" : {
+            "content" : {
+              "application/json" : {
+                "schema" : {
+                  "$ref" : "#/components/schemas/ApiError"
+                }
+              }
+            },
+            "description" : "Missing or invalid bearer token"
           }
         },
         "security" : [ {
@@ -800,6 +912,26 @@
               }
             },
             "description" : "OK"
+          },
+          "401" : {
+            "content" : {
+              "application/json" : {
+                "schema" : {
+                  "$ref" : "#/components/schemas/ApiError"
+                }
+              }
+            },
+            "description" : "Missing or invalid bearer token"
+          },
+          "409" : {
+            "content" : {
+              "application/json" : {
+                "schema" : {
+                  "$ref" : "#/components/schemas/ApiError"
+                }
+              }
+            },
+            "description" : "VERSION_CONFLICT or STATE_LOCKED"
           }
         },
         "security" : [ {
@@ -848,6 +980,16 @@
               }
             },
             "description" : "OK"
+          },
+          "401" : {
+            "content" : {
+              "application/json" : {
+                "schema" : {
+                  "$ref" : "#/components/schemas/ApiError"
+                }
+              }
+            },
+            "description" : "Missing or invalid bearer token"
           }
         },
         "security" : [ {
@@ -859,6 +1001,7 @@
     },
     "/api/v1/apps/{appId}/entities/{entity}/records/{id}/transitions/{transition}" : {
       "post" : {
+        "description" : "Visibility and transition role scopes apply. An unknown transition or hidden record returns 404. A caller lacking the transition grant for a visible record receives 403.",
         "operationId" : "transition",
         "parameters" : [ {
           "in" : "path",
@@ -910,12 +1053,42 @@
               }
             },
             "description" : "OK"
+          },
+          "401" : {
+            "content" : {
+              "application/json" : {
+                "schema" : {
+                  "$ref" : "#/components/schemas/ApiError"
+                }
+              }
+            },
+            "description" : "Missing or invalid bearer token"
+          },
+          "409" : {
+            "content" : {
+              "application/json" : {
+                "schema" : {
+                  "$ref" : "#/components/schemas/ApiError"
+                }
+              }
+            },
+            "description" : "VERSION_CONFLICT or TRANSITION_NOT_ALLOWED"
+          },
+          "503" : {
+            "content" : {
+              "application/json" : {
+                "schema" : {
+                  "$ref" : "#/components/schemas/ApiError"
+                }
+              }
+            },
+            "description" : "STORE_UNAVAILABLE or COMMIT_OUTCOME_UNKNOWN (read to reconcile before retrying)"
           }
         },
         "security" : [ {
           "bearer" : [ ]
         } ],
-        "summary" : "Run a declared workflow transition; expectedVersion must match (409); audited in the same transaction",
+        "summary" : "Run a declared workflow transition and audit it in the same transaction",
         "tags" : [ "Platform" ]
       }
     },
@@ -955,6 +1128,16 @@
               }
             },
             "description" : "OK"
+          },
+          "401" : {
+            "content" : {
+              "application/json" : {
+                "schema" : {
+                  "$ref" : "#/components/schemas/ApiError"
+                }
+              }
+            },
+            "description" : "Missing or invalid bearer token"
           }
         },
         "security" : [ {

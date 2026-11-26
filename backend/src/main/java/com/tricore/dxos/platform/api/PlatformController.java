@@ -4,6 +4,7 @@ package com.tricore.dxos.platform.api;
 
 import com.fasterxml.jackson.annotation.JsonAnySetter;
 import com.fasterxml.jackson.databind.JsonNode;
+import com.tricore.dxos.common.error.ApiError;
 import com.tricore.dxos.platform.records.PlatformException;
 import com.tricore.dxos.platform.manifest.AppManifest;
 import com.tricore.dxos.platform.records.RecordRepository.StoredRecord;
@@ -12,7 +13,9 @@ import io.swagger.v3.oas.annotations.OpenAPIDefinition;
 import io.swagger.v3.oas.annotations.Operation;
 import io.swagger.v3.oas.annotations.enums.SecuritySchemeType;
 import io.swagger.v3.oas.annotations.info.Info;
+import io.swagger.v3.oas.annotations.media.Content;
 import io.swagger.v3.oas.annotations.media.Schema;
+import io.swagger.v3.oas.annotations.responses.ApiResponse;
 import io.swagger.v3.oas.annotations.security.SecurityRequirement;
 import io.swagger.v3.oas.annotations.security.SecurityScheme;
 import io.swagger.v3.oas.annotations.tags.Tag;
@@ -49,6 +52,8 @@ import java.util.UUID;
 @OpenAPIDefinition(info = @Info(title = "OpenTrix Platform API", version = "v1"))
 @SecurityRequirement(name = "bearer")
 @SecurityScheme(name = "bearer", type = SecuritySchemeType.HTTP, scheme = "bearer", bearerFormat = "JWT")
+@ApiResponse(responseCode = "401", description = "Missing or invalid bearer token",
+        content = @Content(mediaType = "application/json", schema = @Schema(implementation = ApiError.class)))
 @ConditionalOnProperty(name = "opentrix.platform.enabled", havingValue = "true")
 public class PlatformController {
     private final RecordService service;
@@ -97,30 +102,33 @@ public class PlatformController {
 
     public record PageResponse(List<RecordResponse> items, long total, int limit, int offset) {}
 
-    public record CreateRecordRequest(JsonNode data) {
+    public record CreateRecordRequest(@Schema(requiredMode = Schema.RequiredMode.REQUIRED) JsonNode data) {
         @JsonAnySetter public void unknown(String field, Object value) { throw new IllegalArgumentException("Unknown field"); }
     }
 
     public record UpdateRecordRequest(
             @Schema(implementation = Long.class, minimum = "0", requiredMode = Schema.RequiredMode.REQUIRED)
-            JsonNode expectedVersion, JsonNode data) {
+            JsonNode expectedVersion, @Schema(requiredMode = Schema.RequiredMode.REQUIRED) JsonNode data) {
         @JsonAnySetter public void unknown(String field, Object value) { throw new IllegalArgumentException("Unknown field"); }
     }
 
     @Operation(summary = "List applications in which the caller holds a role")
     @GetMapping
+    @ResponseStatus(HttpStatus.OK)
     public List<AppResponse> applications() {
         return service.applications().stream().map(PlatformController::app).toList();
     }
 
     @Operation(summary = "Read one application (404 when the caller holds no role in it)")
     @GetMapping("/{appId}")
+    @ResponseStatus(HttpStatus.OK)
     public AppResponse application(@PathVariable String appId) {
         return app(service.application(appId));
     }
 
     @Operation(summary = "Read an entity's record schema and the caller's allowed operations")
     @GetMapping("/{appId}/entities/{entity}")
+    @ResponseStatus(HttpStatus.OK)
     public EntityResponse entity(@PathVariable String appId, @PathVariable String entity) {
         var view = service.entity(appId, entity);
         Map<String, String> allowed = new TreeMap<>();
@@ -133,6 +141,7 @@ public class PlatformController {
 
     @Operation(summary = "Search and page records the caller may read")
     @GetMapping("/{appId}/entities/{entity}/records")
+    @ResponseStatus(HttpStatus.OK)
     public PageResponse search(@PathVariable String appId, @PathVariable String entity,
                                @RequestParam(required = false) @Size(min = 1, max = 100) String q,
                                @RequestParam(defaultValue = "20") @Min(1) @Max(100) int limit,
@@ -156,18 +165,24 @@ public class PlatformController {
 
     @Operation(summary = "Read one record")
     @GetMapping("/{appId}/entities/{entity}/records/{id}")
+    @ResponseStatus(HttpStatus.OK)
     public RecordResponse get(@PathVariable String appId, @PathVariable String entity, @PathVariable UUID id) {
         return record(appId, entity, service.get(appId, entity, id));
     }
 
     @Operation(summary = "Replace a record's data; expectedVersion must match (409 otherwise); audited")
+    @ApiResponse(responseCode = "409", description = "VERSION_CONFLICT or STATE_LOCKED",
+            content = @Content(mediaType = "application/json", schema = @Schema(implementation = ApiError.class)))
     @PutMapping("/{appId}/entities/{entity}/records/{id}")
+    @ResponseStatus(HttpStatus.OK)
     public RecordResponse update(@PathVariable String appId, @PathVariable String entity, @PathVariable UUID id,
                                  @RequestBody UpdateRecordRequest input) {
         return record(appId, entity, service.update(appId, entity, id, exactVersion(input.expectedVersion()), input.data()));
     }
 
     @Operation(summary = "Delete a record; expectedVersion must match (409 otherwise); audited")
+    @ApiResponse(responseCode = "409", description = "VERSION_CONFLICT or STATE_LOCKED",
+            content = @Content(mediaType = "application/json", schema = @Schema(implementation = ApiError.class)))
     @DeleteMapping("/{appId}/entities/{entity}/records/{id}")
     @ResponseStatus(HttpStatus.NO_CONTENT)
     public ResponseEntity<Void> delete(@PathVariable String appId, @PathVariable String entity, @PathVariable UUID id,
@@ -178,14 +193,23 @@ public class PlatformController {
 
     @Operation(summary = "Workflow state of a record and the transitions the caller may run now")
     @GetMapping("/{appId}/entities/{entity}/records/{id}/workflow")
+    @ResponseStatus(HttpStatus.OK)
     public WorkflowResponse workflowOf(@PathVariable String appId, @PathVariable String entity, @PathVariable UUID id) {
         var view = service.workflow(appId, entity, id);
         return new WorkflowResponse(view.state(), view.version(), view.terminal(), view.editable(),
                 view.allowedActions().stream().map(action -> new ActionResponse(action.id(), action.to())).toList());
     }
 
-    @Operation(summary = "Run a declared workflow transition; expectedVersion must match (409); audited in the same transaction")
+    @Operation(summary = "Run a declared workflow transition and audit it in the same transaction",
+            description = "Visibility and transition role scopes apply. An unknown transition or hidden record returns 404."
+                    + " A caller lacking the transition grant for a visible record receives 403.")
+    @ApiResponse(responseCode = "409", description = "VERSION_CONFLICT or TRANSITION_NOT_ALLOWED",
+            content = @Content(mediaType = "application/json", schema = @Schema(implementation = ApiError.class)))
+    @ApiResponse(responseCode = "503", description = "STORE_UNAVAILABLE or COMMIT_OUTCOME_UNKNOWN"
+            + " (read to reconcile before retrying)",
+            content = @Content(mediaType = "application/json", schema = @Schema(implementation = ApiError.class)))
     @PostMapping("/{appId}/entities/{entity}/records/{id}/transitions/{transition}")
+    @ResponseStatus(HttpStatus.OK)
     public RecordResponse transition(@PathVariable String appId, @PathVariable String entity, @PathVariable UUID id,
                                      @PathVariable String transition, @RequestBody TransitionRequest input) {
         return record(appId, entity, service.transition(appId, entity, id, transition, exactVersion(input.expectedVersion())));
@@ -201,6 +225,7 @@ public class PlatformController {
 
     @Operation(summary = "Workflow history of a record (creation state and transitions); needs read access to the record")
     @GetMapping("/{appId}/entities/{entity}/records/{id}/history")
+    @ResponseStatus(HttpStatus.OK)
     public List<HistoryItem> history(@PathVariable String appId, @PathVariable String entity, @PathVariable UUID id) {
         return service.history(appId, entity, id).stream()
                 .map(row -> new HistoryItem(row.action(), row.transitionId(), row.fromState(), row.toState(), row.actorId(),
@@ -209,6 +234,7 @@ public class PlatformController {
 
     @Operation(summary = "Entity audit trail (needs the manifest audit grant); values of sensitive fields are redacted")
     @GetMapping("/{appId}/entities/{entity}/audit")
+    @ResponseStatus(HttpStatus.OK)
     public AuditPageResponse audit(@PathVariable String appId, @PathVariable String entity,
                                    @RequestParam(required = false) UUID recordId,
                                    @RequestParam(defaultValue = "20") @Min(1) @Max(100) int limit,

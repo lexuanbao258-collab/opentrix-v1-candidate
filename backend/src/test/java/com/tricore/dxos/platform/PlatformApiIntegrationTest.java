@@ -257,6 +257,7 @@ class PlatformApiIntegrationTest {
         JsonNode document = body(call(get("/v3/api-docs"), REQUESTER, null).andExpect(status().isOk()));
         JsonNode paths = document.path("paths");
         assertThat(paths.path("/api/v1/apps").has("get")).isTrue();
+        assertThat(paths.path("/api/v1/apps").path("get").path("responses").has("200")).isTrue();
         assertThat(paths.path("/api/v1/apps/{appId}/entities/{entity}").has("get")).isTrue();
         assertThat(paths.path("/api/v1/apps/{appId}/entities/{entity}/records").has("get")).isTrue();
         assertThat(paths.path("/api/v1/apps/{appId}/entities/{entity}/records").has("post")).isTrue();
@@ -265,6 +266,9 @@ class PlatformApiIntegrationTest {
         JsonNode item = paths.path("/api/v1/apps/{appId}/entities/{entity}/records/{id}");
         assertThat(item.has("get") && item.has("put") && item.has("delete")).isTrue();
         assertThat(item.path("delete").path("responses").has("204")).isTrue();
+        assertThat(item.path("put").path("responses").fieldNames()).toIterable().contains("200", "401", "409");
+        assertThat(paths.path("/api/v1/apps/{appId}/entities/{entity}/records/{id}/transitions/{transition}")
+                .path("post").path("responses").fieldNames()).toIterable().contains("200", "401", "409", "503");
         assertThat(paths.fieldNames()).toIterable().allMatch(path -> path.startsWith("/api/v1/apps"));
         assertThat(document.path("components").path("securitySchemes").path("bearer").path("scheme").asText())
                 .isEqualTo("bearer");
