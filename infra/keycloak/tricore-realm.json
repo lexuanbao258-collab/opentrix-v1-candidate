@@ -36,6 +36,18 @@
         {
           "name": "workflow:read",
           "description": "Workflow authority read by the backend from resource_access.tricore-api.roles"
+        },
+        {
+          "name": "it-helpdesk:admin",
+          "description": "IT Helpdesk app role: manage the service category catalog (Platform API)"
+        },
+        {
+          "name": "it-helpdesk:agent",
+          "description": "IT Helpdesk app role: support agent (Platform API)"
+        },
+        {
+          "name": "it-helpdesk:requester",
+          "description": "IT Helpdesk app role: requester (Platform API)"
         }
       ]
     }
@@ -143,7 +155,10 @@
           "workflow:create",
           "workflow:activate",
           "workflow:transition",
-          "workflow:read"
+          "workflow:read",
+          "it-helpdesk:admin",
+          "it-helpdesk:agent",
+          "it-helpdesk:requester"
         ]
       },
       {
@@ -170,7 +185,8 @@
           "workflow:create",
           "workflow:activate",
           "workflow:read",
-          "workflow:transition"
+          "workflow:transition",
+          "it-helpdesk:requester"
         ]
       }
     },
@@ -187,7 +203,8 @@
       "clientRoles": {
         "tricore-api": [
           "workflow:read",
-          "workflow:transition"
+          "workflow:transition",
+          "it-helpdesk:admin"
         ]
       }
     },
@@ -204,7 +221,8 @@
       "clientRoles": {
         "tricore-api": [
           "workflow:read",
-          "workflow:transition"
+          "workflow:transition",
+          "it-helpdesk:agent"
         ]
       }
     },

@@ -47,6 +47,19 @@ else
   $PSQL -c "ALTER ROLE helpdesk_runtime_demo PASSWORD '$(q "$HELPDESK_RUNTIME_PASSWORD")';"
 fi
 
+echo "== Platform schema (owner rieng; runtime helpdesk_runtime_demo chi nhan DML qua migration)"
+if [ "$($PSQL -tAc "SELECT 1 FROM pg_roles WHERE rolname='opentrix_platform_owner'")" != "1" ]; then
+  $PSQL <<SQL
+BEGIN;
+CREATE ROLE opentrix_platform_owner LOGIN PASSWORD '$(q "$PLATFORM_OWNER_PASSWORD")' NOSUPERUSER NOCREATEDB NOCREATEROLE NOREPLICATION NOBYPASSRLS NOINHERIT;
+GRANT CONNECT ON DATABASE helpdesk_disposable_demo TO opentrix_platform_owner;
+CREATE SCHEMA opentrix_platform AUTHORIZATION opentrix_platform_owner;
+COMMIT;
+SQL
+else
+  $PSQL -c "ALTER ROLE opentrix_platform_owner PASSWORD '$(q "$PLATFORM_OWNER_PASSWORD")';"
+fi
+
 echo "== actor demo (ten hien thi lay tu .env)"
 $PSQL <<SQL
 BEGIN;

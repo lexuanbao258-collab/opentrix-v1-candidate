@@ -41,6 +41,7 @@ services:
     environment:
       PGPASSWORD: ${HELPDESK_SETUP_PASSWORD}
       HELPDESK_RUNTIME_PASSWORD: ${HELPDESK_RUNTIME_PASSWORD:?chay demo-up truoc}
+      PLATFORM_OWNER_PASSWORD: ${PLATFORM_OWNER_PASSWORD:?chay demo-up truoc}
       DEMO_EMPLOYEE_NAME: ${DEMO_EMPLOYEE_NAME:-Nhan vien demo}
       DEMO_COORDINATOR_NAME: ${DEMO_COORDINATOR_NAME:-Dieu phoi demo}
       DEMO_WORKER_NAME: ${DEMO_WORKER_NAME:-Ky thuat vien demo}
@@ -85,6 +86,28 @@ services:
       - ./demo/init/kc-init.sh:/init/kc-init.sh:ro
     restart: "no"
 
+  # Controlled deployment step for the Platform (ADR-C001): migrates opentrix_platform as its owner
+  # and registers manifests from apps/. The backend runtime login never receives DDL privileges.
+  platform-migrate:
+    <<: *loopback
+    build:
+      context: ..
+      dockerfile: infra/demo/backend.Dockerfile
+    depends_on:
+      db-init:
+        condition: service_completed_successfully
+    entrypoint: ["java", "-Dloader.main=com.tricore.dxos.platform.registry.PlatformMigration",
+                 "-cp", "/app/application.jar", "org.springframework.boot.loader.launch.PropertiesLauncher"]
+    environment:
+      PLATFORM_MIGRATION_JDBC_URL: jdbc:postgresql://127.0.0.1:5432/helpdesk_disposable_demo
+      PLATFORM_MIGRATION_USER: opentrix_platform_owner
+      PLATFORM_MIGRATION_PASSWORD: ${PLATFORM_OWNER_PASSWORD:?chay demo-up truoc}
+      PLATFORM_RUNTIME_ROLE: helpdesk_runtime_demo
+      PLATFORM_MANIFEST_DIR: /apps
+    volumes:
+      - ../apps:/apps:ro
+    restart: "no"
+
   backend:
     <<: *loopback
     build:
@@ -92,6 +115,8 @@ services:
       dockerfile: infra/demo/backend.Dockerfile
     depends_on:
       db-init:
+        condition: service_completed_successfully
+      platform-migrate:
         condition: service_completed_successfully
       kc-init:
         condition: service_completed_successfully
@@ -112,6 +137,7 @@ services:
       DXOS_HELPDESK_SCHEMA: helpdesk_demo
       DXOS_HELPDESK_TENANT: demo
       WORKFLOW_EVENT_GUARD_LOCAL_DISPOSABLE: "true"
+      OPENTRIX_PLATFORM_ENABLED: "true"
       OIDC_ISSUER_URI: http://localhost:8180/realms/tricore
       OIDC_AUDIENCE: tricore-api
       OIDC_RESOURCE_CLIENT_ID: tricore-api

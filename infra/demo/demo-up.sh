@@ -29,6 +29,9 @@ ENV
   echo "Da sinh infra/.env (khong commit). Mat khau 3 tai khoan demo nam trong file nay."
 fi
 
+# .env cu (truoc Platform) chua co mat khau owner cua Platform: bo sung, khong doi gia tri khac.
+grep -q '^PLATFORM_OWNER_PASSWORD=' .env || { umask 077; echo "PLATFORM_OWNER_PASSWORD=$(openssl rand -hex 16)" >> .env; }
+
 echo "== build + chay (lan dau mat 5-10 phut)"
 $C up -d --build
 

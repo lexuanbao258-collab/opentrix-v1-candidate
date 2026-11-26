@@ -30,6 +30,11 @@ if (-not (Test-Path .env)) {
     Write-Host 'Da sinh infra\.env (khong commit). Mat khau 3 tai khoan demo nam trong file nay.'
 }
 
+# .env cu (truoc Platform) chua co mat khau owner cua Platform: bo sung, khong doi gia tri khac.
+if (-not (Select-String -Path .env -Pattern '^PLATFORM_OWNER_PASSWORD=' -Quiet)) {
+    Add-Content -Path .env -Value "PLATFORM_OWNER_PASSWORD=$([System.Security.Cryptography.RandomNumberGenerator]::GetHexString(32).ToLower())" -Encoding utf8NoBOM
+}
+
 Write-Host '== build + chay (lan dau mat 5-10 phut)'
 docker @compose up -d --build
 if ($LASTEXITCODE -ne 0) { throw 'docker compose up that bai' }
