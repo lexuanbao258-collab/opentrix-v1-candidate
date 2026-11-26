@@ -54,3 +54,9 @@ transferred to TRICORE by this notice.
 
 The Apache License does not grant permission to use the OpenTrix name
 or logo, except as required to describe the origin of the software.
+
+Candidate modifications (2026): the independent candidate repository
+lexuanbao258-collab/opentrix-v1-candidate adds a Platform module (application
+registry, generic records, audit), authored by lexuanbao258-collab with AI
+assistance (Claude). Its application manifest frame is adapted from upstream
+commit 1ec99ad (Phan Hai Yen, Apache-2.0). Upstream copyright notices are kept.

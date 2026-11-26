@@ -19,5 +19,6 @@ Each ADR records one architecture decision, its rationale and trade-offs. An ADR
 | [ADR-016](ADR-016-s3-compatible-storage.md) | S3-compatible object storage and module data ownership | ACCEPTED | #181, #217 |
 | [ADR-017](ADR-017-helpdesk-first-scope.md) | Helpdesk-first competition scope | ACCEPTED | #216, #219 |
 | [ADR-018](ADR-018-apisix-api-gateway.md) | Apache APISIX as the API gateway | ACCEPTED | #116, #220 |
+| [ADR-C001](ADR-C001-candidate-platform-baseline.md) | Candidate only: Platform/ESM boundary, keep Workflow domain, hybrid JSONB records, public API v1 | PROPOSED (candidate) | Phase 2 M0/M1 |
 
 Số ADR-010 đến ADR-015 không dùng: chúng gắn với các đề xuất cũ đã đóng (ví dụ #159, #160). / Numbers ADR-010 to ADR-015 are unused; they belong to closed historical proposals (for example #159, #160).
