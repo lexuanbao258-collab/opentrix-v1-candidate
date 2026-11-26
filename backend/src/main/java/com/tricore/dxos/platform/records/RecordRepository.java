@@ -57,6 +57,32 @@ public class RecordRepository {
                 mapper, id, scope.tenantId(), scope.appId(), scope.entity(), data.toString(), state, actor, actor);
     }
 
+    byte[] createFingerprint(JsonNode data) {
+        // Manifest record data is a flat object of scalars. Normalize number scale as well as key order.
+        return jdbc.queryForObject("""
+                SELECT sha256(convert_to(coalesce(jsonb_object_agg(key, CASE jsonb_typeof(value)
+                    WHEN 'number' THEN to_jsonb(trim_scale((value #>> '{}')::numeric))
+                    ELSE value END), '{}'::jsonb)::text, 'UTF8'))
+                FROM jsonb_each(?::jsonb)""", byte[].class, data.toString());
+    }
+
+    boolean claimCreate(Scope scope, UUID id, String actor, boolean machine, byte[] fingerprint) {
+        return jdbc.update("""
+                INSERT INTO opentrix_platform.create_requests
+                    (record_id, tenant_id, app_key, entity_key, actor_id, actor_type, payload_sha256)
+                VALUES (?, ?, ?, ?, ?, ?, ?) ON CONFLICT (record_id) DO NOTHING""",
+                id, scope.tenantId(), scope.appId(), scope.entity(), actor, machine ? "MACHINE" : "USER", fingerprint) == 1;
+    }
+
+    boolean matchesCreate(Scope scope, UUID id, String actor, boolean machine, byte[] fingerprint) {
+        var matches = jdbc.queryForList("""
+                SELECT coalesce(payload_sha256 = ?, false) FROM opentrix_platform.create_requests
+                WHERE record_id = ? AND tenant_id = ? AND app_key = ? AND entity_key = ? AND actor_id = ? AND actor_type = ?""",
+                Boolean.class, fingerprint, id, scope.tenantId(), scope.appId(), scope.entity(), actor,
+                machine ? "MACHINE" : "USER");
+        return matches.stream().findFirst().orElseThrow(PlatformException::notFound);
+    }
+
     /** Row-locks the record so the version check and the write are serialized. */
     public Optional<StoredRecord> findForUpdate(Scope scope, UUID id, String ownerOrNull) {
         return find(scope, id, ownerOrNull, " FOR UPDATE");

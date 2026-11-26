@@ -69,7 +69,9 @@ public class PlatformController {
 
     public record StateSummary(String id, Map<String, String> name, boolean editable, boolean terminal) {}
 
-    public record TransitionSummary(String id, String from, String to, Map<String, String> name, boolean allowedForCaller) {}
+    public record TransitionSummary(String id, String from, String to, Map<String, String> name,
+                                    @Schema(description = "Role grant only. Use record workflow allowedActions for executable transitions.")
+                                    boolean allowedForCaller, boolean notByCreator) {}
 
     public record WorkflowSummary(String initialState, List<StateSummary> states, List<TransitionSummary> transitions) {}
 
@@ -102,8 +104,21 @@ public class PlatformController {
 
     public record PageResponse(List<RecordResponse> items, long total, int limit, int offset) {}
 
-    public record CreateRecordRequest(@Schema(requiredMode = Schema.RequiredMode.REQUIRED) JsonNode data) {
+    public record CreateRecordRequest(
+            @Schema(implementation = UUID.class, description = "Client-supplied UUID to reconcile this create") JsonNode id,
+            @com.fasterxml.jackson.databind.annotation.JsonDeserialize(using = CreateDataDeserializer.class)
+            @Schema(requiredMode = Schema.RequiredMode.REQUIRED) JsonNode data) {
         @JsonAnySetter public void unknown(String field, Object value) { throw new IllegalArgumentException("Unknown field"); }
+    }
+
+    static final class CreateDataDeserializer extends com.fasterxml.jackson.databind.JsonDeserializer<JsonNode> {
+        @Override
+        public JsonNode deserialize(com.fasterxml.jackson.core.JsonParser parser,
+                                    com.fasterxml.jackson.databind.DeserializationContext context) throws java.io.IOException {
+            return ((com.fasterxml.jackson.databind.ObjectMapper) parser.getCodec()).reader()
+                    .with(com.fasterxml.jackson.databind.DeserializationFeature.USE_BIG_DECIMAL_FOR_FLOATS)
+                    .readTree(parser);
+        }
     }
 
     public record UpdateRecordRequest(
@@ -113,6 +128,8 @@ public class PlatformController {
     }
 
     @Operation(summary = "List applications in which the caller holds a role")
+    @ApiResponse(responseCode = "503", description = "STORE_UNAVAILABLE (transaction could not start)",
+            content = @Content(mediaType = "application/json", schema = @Schema(implementation = ApiError.class)))
     @GetMapping
     @ResponseStatus(HttpStatus.OK)
     public List<AppResponse> applications() {
@@ -120,6 +137,10 @@ public class PlatformController {
     }
 
     @Operation(summary = "Read one application (404 when the caller holds no role in it)")
+    @ApiResponse(responseCode = "404", description = "Application is missing or hidden",
+            content = @Content(mediaType = "application/json", schema = @Schema(implementation = ApiError.class)))
+    @ApiResponse(responseCode = "503", description = "STORE_UNAVAILABLE (transaction could not start)",
+            content = @Content(mediaType = "application/json", schema = @Schema(implementation = ApiError.class)))
     @GetMapping("/{appId}")
     @ResponseStatus(HttpStatus.OK)
     public AppResponse application(@PathVariable String appId) {
@@ -127,6 +148,10 @@ public class PlatformController {
     }
 
     @Operation(summary = "Read an entity's record schema and the caller's allowed operations")
+    @ApiResponse(responseCode = "404", description = "Application or entity is missing or hidden",
+            content = @Content(mediaType = "application/json", schema = @Schema(implementation = ApiError.class)))
+    @ApiResponse(responseCode = "503", description = "STORE_UNAVAILABLE (transaction could not start)",
+            content = @Content(mediaType = "application/json", schema = @Schema(implementation = ApiError.class)))
     @GetMapping("/{appId}/entities/{entity}")
     @ResponseStatus(HttpStatus.OK)
     public EntityResponse entity(@PathVariable String appId, @PathVariable String entity) {
@@ -140,6 +165,14 @@ public class PlatformController {
     }
 
     @Operation(summary = "Search and page records the caller may read")
+    @ApiResponse(responseCode = "400", description = "Invalid search or paging parameters",
+            content = @Content(mediaType = "application/json", schema = @Schema(implementation = ApiError.class)))
+    @ApiResponse(responseCode = "403", description = "Read permission denied",
+            content = @Content(mediaType = "application/json", schema = @Schema(implementation = ApiError.class)))
+    @ApiResponse(responseCode = "404", description = "Application or entity is missing or hidden",
+            content = @Content(mediaType = "application/json", schema = @Schema(implementation = ApiError.class)))
+    @ApiResponse(responseCode = "503", description = "STORE_UNAVAILABLE (transaction could not start)",
+            content = @Content(mediaType = "application/json", schema = @Schema(implementation = ApiError.class)))
     @GetMapping("/{appId}/entities/{entity}/records")
     @ResponseStatus(HttpStatus.OK)
     public PageResponse search(@PathVariable String appId, @PathVariable String entity,
@@ -152,18 +185,42 @@ public class PlatformController {
     }
 
     @Operation(summary = "Create a record; validated against the entity schema; audited",
-            description = "Invalid data returns 400. If a commit cannot be confirmed, 503 COMMIT_OUTCOME_UNKNOWN"
-                    + " requires reconciliation before another write.")
+            description = "Supply and retain a UUID in id to reconcile a create. With the same tenant, app, entity,"
+                    + " caller and original data, a replay returns the current readable record with 201 and the same Location."
+                    + " A different payload returns 409, and a deleted or out-of-scope record returns 404."
+                    + " After COMMIT_OUTCOME_UNKNOWN or a lost response, read by UUID or explicitly replay the original"
+                    + " request with the same UUID to reconcile. Never substitute a new UUID. Requests without id still"
+                    + " receive a server-generated UUID and cannot be reliably reconciled after a lost response.")
+    @ApiResponse(responseCode = "400", description = "Invalid UUID, request body or record data",
+            content = @Content(mediaType = "application/json", schema = @Schema(implementation = ApiError.class)))
+    @ApiResponse(responseCode = "403", description = "Create or replay read permission denied",
+            content = @Content(mediaType = "application/json", schema = @Schema(implementation = ApiError.class)))
+    @ApiResponse(responseCode = "404", description = "Application, entity or replayed record is missing or hidden",
+            content = @Content(mediaType = "application/json", schema = @Schema(implementation = ApiError.class)))
+    @ApiResponse(responseCode = "409", description = "CREATE_ID_CONFLICT: UUID already reserved for another payload or a historical create",
+            content = @Content(mediaType = "application/json", schema = @Schema(implementation = ApiError.class)))
+    @ApiResponse(responseCode = "415", description = "Unsupported request media type",
+            content = @Content(mediaType = "application/json", schema = @Schema(implementation = ApiError.class)))
+    @ApiResponse(responseCode = "503", description = "STORE_UNAVAILABLE or COMMIT_OUTCOME_UNKNOWN (reconcile using the same UUID)",
+            content = @Content(mediaType = "application/json", schema = @Schema(implementation = ApiError.class)))
     @PostMapping("/{appId}/entities/{entity}/records")
     @ResponseStatus(HttpStatus.CREATED)
     public ResponseEntity<RecordResponse> create(@PathVariable String appId, @PathVariable String entity,
                                                  @RequestBody CreateRecordRequest input) {
-        var created = record(appId, entity, service.create(appId, entity, input.data()));
+        var created = record(appId, entity, service.create(appId, entity, optionalId(input.id()), input.data()));
         return ResponseEntity.created(URI.create("/api/v1/apps/" + appId + "/entities/" + entity
                 + "/records/" + created.id())).body(created);
     }
 
     @Operation(summary = "Read one record")
+    @ApiResponse(responseCode = "400", description = "Invalid record UUID",
+            content = @Content(mediaType = "application/json", schema = @Schema(implementation = ApiError.class)))
+    @ApiResponse(responseCode = "403", description = "Read permission denied",
+            content = @Content(mediaType = "application/json", schema = @Schema(implementation = ApiError.class)))
+    @ApiResponse(responseCode = "404", description = "Application, entity or record is missing or hidden",
+            content = @Content(mediaType = "application/json", schema = @Schema(implementation = ApiError.class)))
+    @ApiResponse(responseCode = "503", description = "STORE_UNAVAILABLE (transaction could not start)",
+            content = @Content(mediaType = "application/json", schema = @Schema(implementation = ApiError.class)))
     @GetMapping("/{appId}/entities/{entity}/records/{id}")
     @ResponseStatus(HttpStatus.OK)
     public RecordResponse get(@PathVariable String appId, @PathVariable String entity, @PathVariable UUID id) {
@@ -171,7 +228,17 @@ public class PlatformController {
     }
 
     @Operation(summary = "Replace a record's data; expectedVersion must match (409 otherwise); audited")
+    @ApiResponse(responseCode = "400", description = "Invalid record UUID, version or data",
+            content = @Content(mediaType = "application/json", schema = @Schema(implementation = ApiError.class)))
+    @ApiResponse(responseCode = "403", description = "Update permission denied",
+            content = @Content(mediaType = "application/json", schema = @Schema(implementation = ApiError.class)))
+    @ApiResponse(responseCode = "404", description = "Application, entity or record is missing or hidden",
+            content = @Content(mediaType = "application/json", schema = @Schema(implementation = ApiError.class)))
     @ApiResponse(responseCode = "409", description = "VERSION_CONFLICT or STATE_LOCKED",
+            content = @Content(mediaType = "application/json", schema = @Schema(implementation = ApiError.class)))
+    @ApiResponse(responseCode = "415", description = "Unsupported request media type",
+            content = @Content(mediaType = "application/json", schema = @Schema(implementation = ApiError.class)))
+    @ApiResponse(responseCode = "503", description = "STORE_UNAVAILABLE or COMMIT_OUTCOME_UNKNOWN (read to reconcile)",
             content = @Content(mediaType = "application/json", schema = @Schema(implementation = ApiError.class)))
     @PutMapping("/{appId}/entities/{entity}/records/{id}")
     @ResponseStatus(HttpStatus.OK)
@@ -181,7 +248,15 @@ public class PlatformController {
     }
 
     @Operation(summary = "Delete a record; expectedVersion must match (409 otherwise); audited")
+    @ApiResponse(responseCode = "400", description = "Invalid record UUID or expected version",
+            content = @Content(mediaType = "application/json", schema = @Schema(implementation = ApiError.class)))
+    @ApiResponse(responseCode = "403", description = "Delete permission denied",
+            content = @Content(mediaType = "application/json", schema = @Schema(implementation = ApiError.class)))
+    @ApiResponse(responseCode = "404", description = "Application, entity or record is missing or hidden",
+            content = @Content(mediaType = "application/json", schema = @Schema(implementation = ApiError.class)))
     @ApiResponse(responseCode = "409", description = "VERSION_CONFLICT or STATE_LOCKED",
+            content = @Content(mediaType = "application/json", schema = @Schema(implementation = ApiError.class)))
+    @ApiResponse(responseCode = "503", description = "STORE_UNAVAILABLE or COMMIT_OUTCOME_UNKNOWN (read to reconcile)",
             content = @Content(mediaType = "application/json", schema = @Schema(implementation = ApiError.class)))
     @DeleteMapping("/{appId}/entities/{entity}/records/{id}")
     @ResponseStatus(HttpStatus.NO_CONTENT)
@@ -192,6 +267,14 @@ public class PlatformController {
     }
 
     @Operation(summary = "Workflow state of a record and the transitions the caller may run now")
+    @ApiResponse(responseCode = "400", description = "Invalid record UUID",
+            content = @Content(mediaType = "application/json", schema = @Schema(implementation = ApiError.class)))
+    @ApiResponse(responseCode = "403", description = "Read permission denied",
+            content = @Content(mediaType = "application/json", schema = @Schema(implementation = ApiError.class)))
+    @ApiResponse(responseCode = "404", description = "Application, entity, workflow or record is missing or hidden",
+            content = @Content(mediaType = "application/json", schema = @Schema(implementation = ApiError.class)))
+    @ApiResponse(responseCode = "503", description = "STORE_UNAVAILABLE (transaction could not start)",
+            content = @Content(mediaType = "application/json", schema = @Schema(implementation = ApiError.class)))
     @GetMapping("/{appId}/entities/{entity}/records/{id}/workflow")
     @ResponseStatus(HttpStatus.OK)
     public WorkflowResponse workflowOf(@PathVariable String appId, @PathVariable String entity, @PathVariable UUID id) {
@@ -202,8 +285,16 @@ public class PlatformController {
 
     @Operation(summary = "Run a declared workflow transition and audit it in the same transaction",
             description = "Visibility and transition role scopes apply. An unknown transition or hidden record returns 404."
-                    + " A caller lacking the transition grant for a visible record receives 403.")
+                    + " A caller lacking the transition grant or barred by notByCreator receives 403 for a visible record.")
+    @ApiResponse(responseCode = "400", description = "Invalid record UUID or expected version",
+            content = @Content(mediaType = "application/json", schema = @Schema(implementation = ApiError.class)))
+    @ApiResponse(responseCode = "403", description = "Transition denied by role, scope or creator policy",
+            content = @Content(mediaType = "application/json", schema = @Schema(implementation = ApiError.class)))
+    @ApiResponse(responseCode = "404", description = "Application, entity, workflow, record or transition is missing or hidden",
+            content = @Content(mediaType = "application/json", schema = @Schema(implementation = ApiError.class)))
     @ApiResponse(responseCode = "409", description = "VERSION_CONFLICT or TRANSITION_NOT_ALLOWED",
+            content = @Content(mediaType = "application/json", schema = @Schema(implementation = ApiError.class)))
+    @ApiResponse(responseCode = "415", description = "Unsupported request media type",
             content = @Content(mediaType = "application/json", schema = @Schema(implementation = ApiError.class)))
     @ApiResponse(responseCode = "503", description = "STORE_UNAVAILABLE or COMMIT_OUTCOME_UNKNOWN"
             + " (read to reconcile before retrying)",
@@ -223,7 +314,29 @@ public class PlatformController {
         return version.longValue();
     }
 
+    private static UUID optionalId(JsonNode id) {
+        if (id == null || id.isNull()) return null;
+        if (id.isTextual()) {
+            try {
+                UUID parsed = UUID.fromString(id.textValue());
+                if (parsed.toString().equalsIgnoreCase(id.textValue())) return parsed;
+            } catch (IllegalArgumentException invalid) {
+                // Use the same validation response for every invalid UUID format.
+            }
+        }
+        throw new PlatformException(PlatformException.Code.VALIDATION_FAILED, "Request is invalid",
+                Map.of("id", "must be a UUID"));
+    }
+
     @Operation(summary = "Workflow history of a record (creation state and transitions); needs read access to the record")
+    @ApiResponse(responseCode = "400", description = "Invalid record UUID",
+            content = @Content(mediaType = "application/json", schema = @Schema(implementation = ApiError.class)))
+    @ApiResponse(responseCode = "403", description = "Read permission denied",
+            content = @Content(mediaType = "application/json", schema = @Schema(implementation = ApiError.class)))
+    @ApiResponse(responseCode = "404", description = "Application, entity, workflow or record is missing or hidden",
+            content = @Content(mediaType = "application/json", schema = @Schema(implementation = ApiError.class)))
+    @ApiResponse(responseCode = "503", description = "STORE_UNAVAILABLE (transaction could not start)",
+            content = @Content(mediaType = "application/json", schema = @Schema(implementation = ApiError.class)))
     @GetMapping("/{appId}/entities/{entity}/records/{id}/history")
     @ResponseStatus(HttpStatus.OK)
     public List<HistoryItem> history(@PathVariable String appId, @PathVariable String entity, @PathVariable UUID id) {
@@ -233,6 +346,14 @@ public class PlatformController {
     }
 
     @Operation(summary = "Entity audit trail (needs the manifest audit grant); values of sensitive fields are redacted")
+    @ApiResponse(responseCode = "400", description = "Invalid record UUID or paging parameters",
+            content = @Content(mediaType = "application/json", schema = @Schema(implementation = ApiError.class)))
+    @ApiResponse(responseCode = "403", description = "Audit permission denied",
+            content = @Content(mediaType = "application/json", schema = @Schema(implementation = ApiError.class)))
+    @ApiResponse(responseCode = "404", description = "Application or entity is missing or hidden",
+            content = @Content(mediaType = "application/json", schema = @Schema(implementation = ApiError.class)))
+    @ApiResponse(responseCode = "503", description = "STORE_UNAVAILABLE (transaction could not start)",
+            content = @Content(mediaType = "application/json", schema = @Schema(implementation = ApiError.class)))
     @GetMapping("/{appId}/entities/{entity}/audit")
     @ResponseStatus(HttpStatus.OK)
     public AuditPageResponse audit(@PathVariable String appId, @PathVariable String entity,
@@ -256,7 +377,8 @@ public class PlatformController {
                 .sorted(java.util.Comparator.comparing(com.tricore.dxos.core.workflow.WorkflowTransition::transitionId))
                 .map(transition -> new TransitionSummary(transition.transitionId(), transition.sourceState(),
                         transition.targetState(), text(node.path("transitions").path(transition.transitionId()).path("name")),
-                        workflow.scopeFor(transition.transitionId(), view.callerRoles()).isPresent())).toList();
+                        workflow.scopeFor(transition.transitionId(), view.callerRoles()).isPresent(),
+                        workflow.notByCreator().contains(transition.transitionId()))).toList();
         return new WorkflowSummary(workflow.definition().initialState(), states, transitions);
     }
 

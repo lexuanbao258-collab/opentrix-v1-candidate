@@ -16,8 +16,8 @@ import java.util.Optional;
 import java.util.concurrent.ConcurrentHashMap;
 
 /**
- * Read-only runtime view of registered applications. Registered manifests are immutable, so a
- * loaded manifest and its compiled record schemas are cached for the life of the process.
+ * Read-only runtime view of active applications, cached for the life of the process.
+ * Deployments must stop the runtime before changing the active version.
  * Stored manifests are validated again on load (defense in depth against edited rows).
  */
 @Component

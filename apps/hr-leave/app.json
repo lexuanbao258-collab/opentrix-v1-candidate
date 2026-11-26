@@ -1,6 +1,6 @@
 {
   "id": "hr-leave",
-  "version": "1.0.0",
+  "version": "1.1.0",
   "license": "Apache-2.0",
   "name": { "en": "HR Leave", "vi": "Nghỉ phép" },
   "description": { "en": "Leave requests with a manager approval workflow. Second application proving Platform reuse." },
@@ -44,8 +44,8 @@
         "transitions": {
           "submit": { "from": "DRAFT", "to": "PENDING", "roles": { "employee": "own" } },
           "discard": { "from": "DRAFT", "to": "CANCELLED", "roles": { "employee": "own" } },
-          "approve": { "from": "PENDING", "to": "APPROVED", "roles": { "manager": "all" } },
-          "reject": { "from": "PENDING", "to": "REJECTED", "roles": { "manager": "all" } },
+          "approve": { "from": "PENDING", "to": "APPROVED", "roles": { "manager": "all" }, "notByCreator": true },
+          "reject": { "from": "PENDING", "to": "REJECTED", "roles": { "manager": "all" }, "notByCreator": true },
           "withdraw": { "from": "PENDING", "to": "CANCELLED", "roles": { "employee": "own" } }
         }
       }

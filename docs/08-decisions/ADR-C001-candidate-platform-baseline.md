@@ -24,7 +24,11 @@ Phase 1 audit (2026-11-26) found that the repository is a hardened IT Helpdesk d
 
 ## 3. Decision — workflow engine
 
-Keep the existing Workflow domain (`core/workflow`: immutable definitions, instances and optimistic `runtimeVersion`). **Flowable is deferred.** The legacy `WorkflowController` stays unregistered. Platform records with a workflow store the state on the record row and use its version as the workflow version. The service restores a domain instance for the transition, applies the manifest's role and ownership rules, and writes the new state and audit event in one PostgreSQL transaction. The service checks the supplied version under a row lock. A commit error returns `503 COMMIT_OUTCOME_UNKNOWN` for reconciliation.
+Keep the existing Workflow domain (`core/workflow`), including its immutable definitions, instances and optimistic `runtimeVersion`. **Flowable is deferred.** The legacy `WorkflowController` stays unregistered. Platform records with a workflow store the state on the record row and use its version as the workflow version. The service restores a domain instance, checks the supplied version under a row lock, and writes the new state and audit event in one PostgreSQL transaction.
+
+**Separation of duties.** A manifest transition can declare `notByCreator: true`. The creator is denied even when their roles grant the transition. Record `allowedActions` and execution apply the same role, scope and creator rule. A denied transition leaves the state, version and audit unchanged. HR Leave `1.1.0` applies this rule to `approve` and `reject`.
+
+**Transaction outcomes.** Platform writes own their commit boundary and reject calls made inside an external transaction. The record, its create reservation when applicable, and audit changes commit together. A failure in the transaction body triggers rollback. Failure to start a transaction returns `503 STORE_UNAVAILABLE`. A failure after the write body returns is conservatively reported as `503 COMMIT_OUTCOME_UNKNOWN`, including a failed commit whose outcome could have been classified more narrowly with database-specific evidence. The server never retries an unknown write.
 
 ## 4. Decision — data engine: hybrid relational + JSONB
 
@@ -32,10 +36,13 @@ Schema `opentrix_platform` (own Flyway history table `platform_schema_history`, 
 
 | Table | Purpose | Runtime privilege |
 | --- | --- | --- |
-| `applications` | registered manifest (JSONB) + SHA-256, PK `app_key` | SELECT |
+| `applications` | active manifest (JSONB) + SHA-256, PK `app_key` | SELECT |
+| `application_versions` | immutable manifest history by `(app_key, app_version)` | SELECT |
 | `entity_definitions` | record schema, search fields, permissions; PK `(app_key, entity_key)` | SELECT |
 | `records` | typed columns (`record_id`, `tenant_id`, `app_key`, `entity_key`, `version`, `created_by/at`, `updated_by/at`) + `data JSONB` (object, ≤ 64 KiB); FK to `entity_definitions` | SELECT, INSERT, UPDATE, DELETE |
-| `audit_events` | append-only `CREATE/UPDATE/DELETE` with actor, version, before/after JSONB | SELECT, INSERT |
+| `audit_events` | append-only `CREATE/UPDATE/DELETE/TRANSITION` with actor, version, and operation details | SELECT, INSERT |
+| `create_requests` | reserved UUID, tenant/app/entity/caller scope and original payload fingerprint when available | SELECT, INSERT |
+| `platform_schema_history` | Flyway schema migration history | SELECT |
 
 - Record data is validated server-side against the entity's JSON Schema (networknt `json-schema-validator` 2.0.8, Draft 2020-12, format assertions on, remote fetching off).
 - Search: `data ->> field ILIKE pattern` with the field name and pattern as bind parameters; only manifest-declared string fields are searchable.
@@ -54,9 +61,11 @@ Schema `opentrix_platform` (own Flyway history table `platform_schema_history`, 
 
 Duplicate JSON keys are rejected (strict parser). Nothing in a manifest is executed or concatenated into SQL.
 
-**Registration** is a controlled deployment step: `PlatformMigration` (Gradle `platformMigrate`, compose service `platform-migrate`) runs with the schema owner's credentials. It refuses databases with event triggers, migrates, then registers `apps/*/app.json` in one transaction. Identical manifests are a no-op; a changed manifest for an already registered id is rejected (immutable). There is no public manifest CRUD and no hot reload.
+**Registration** is a controlled deployment step. Stop the Platform runtime before invoking `PlatformMigration` (Gradle `platformMigrate` or the Compose `platform-migrate` service) with the schema owner's credentials. After the schema migration, the registrar validates and activates all supplied manifests in one transaction. Each active version change writes its history and updates entity definitions in that transaction. An identical active version and hash is a no-op. Reusing a version with a different hash, using an older version, or changing only SemVer build metadata is rejected. Restart the runtime after successful registration to load the active versions. The API supports discovery, and the process caches manifests for its lifetime.
 
-**Runtime guard** (`PlatformRuntimeGuard`, startup only, fail-closed): refuses to start when the runtime login is superuser/createrole/createdb/bypassrls, holds CREATE on the database or the Platform schema, or owns the schema; when the schema is not at the expected migration; when any DDL event trigger exists; when a Platform table has a non-internal trigger; or when the login's privileges on Platform tables differ from the exact expected matrix (no extra, no missing privilege). **This is not equivalent to the legacy per-transaction catalog guard**, which stays active for the legacy Workflow schema only. Limit: the Platform check runs once at startup, so an event trigger, table trigger or grant added later by a privileged role is not detected until the next start. Migrations refuse databases with event triggers, so the Platform is not designed for databases that require them. A periodic or per-transaction re-check is an open item.
+**Compatibility.** A higher SemVer may add entities, optional fields and roles. Existing entities, roles, field definitions and required fields must be retained. Existing operation and transition grants may narrow. A new grant or broader scope on an existing entity is rejected. An existing workflow keeps its state topology, can tighten editability, and can add `notByCreator` restrictions. A previously workflow-free entity must be empty before it can gain a workflow. The active workflow always supplies an initial state for new records. V3 backfills manifest history from the active registry and reserves historical record IDs while preserving existing records and audit rows. V1 and V2 stay pinned.
+
+**Runtime guard.** Startup requires a dedicated PostgreSQL login with no role memberships. This covers `SET ROLE` access through membership even with `NOINHERIT`. The guard rejects administrative role attributes, Platform ownership or DDL privileges, table or column grant options, unexpected column privileges and deviations from the table matrix. It checks the schema version, Platform sequence grants, non-internal Platform triggers and database DDL event triggers. Privileges and triggers introduced after startup are checked at the next startup. The legacy Workflow schema keeps its existing per-transaction checks.
 
 **Manifest regular expressions** (`pattern`) are restricted to a finite subset (`SafePatterns`): literals, character classes, `.`, `\d \w \s`, and bounded quantifiers. Up to three variable-width atoms may provide at most 256 width combinations per starting position. The validator checks a patterned field's declared `maxLength` (at most 1,000 characters) before running its regex.
 
@@ -74,7 +83,7 @@ Duplicate JSON keys are rejected (strict parser). Nothing in a manifest is execu
 | GET | `/api/v1/apps/{appId}` | 404 without a role |
 | GET | `/api/v1/apps/{appId}/entities/{entity}` | record schema + caller's allowed operations |
 | GET | `/api/v1/apps/{appId}/entities/{entity}/records?q=&limit=&offset=` | `limit` 1–100, `offset` 0–10000 |
-| POST | `.../records` | body `{data}` → 201 |
+| POST | `.../records` | body `{data, id?}` → 201 + Location. Retain client UUID and original data for reconciliation. |
 | GET | `.../records/{id}` | |
 | PUT | `.../records/{id}` | body `{expectedVersion, data}`; stale → 409 `VERSION_CONFLICT` |
 | DELETE | `.../records/{id}?expectedVersion=` | 204; stale → 409 |
@@ -84,7 +93,9 @@ Duplicate JSON keys are rejected (strict parser). Nothing in a manifest is execu
 | GET | `.../entities/{entity}/audit?recordId=&limit=&offset=` | Requires the entity-wide `audit` grant; sensitive fields are redacted |
 | GET | `/v3/api-docs` | OpenAPI 3. **Off by default** (`OPENTRIX_OPENAPI_ENABLED`); when on it still requires a valid bearer token. Never routed by the ingress. The reviewed contract is committed as `docs/api/openapi-v1.json` and a test fails if it drifts from the running application. |
 
-Platform application errors use `ApiError {status, code, message, errors}`. Validation errors are keyed by JSON location (`/code`). The browser uses explicit Portal BFF routes for its Platform record UI. External clients call the HTTPS ingress directly through the method/path allowlist with a bearer token for `tricore-api`. Audit distinguishes Keycloak client-credentials tokens by the issued `client_id` matching `azp`. Authorization uses app-scoped client roles and record visibility.
+Platform application errors use `ApiError {status, code, message, errors}`. Validation errors are keyed by JSON location (`/code`). The browser uses explicit Portal BFF routes for its Platform record UI. External clients call the HTTPS ingress directly through the method/path allowlist with a bearer token for `tricore-api`. Audit distinguishes Keycloak client-credentials tokens by the issued `client_id` matching `azp`. Machine ownership belongs to the service account identified by issuer and subject. Actions by people using the same service account share that ownership. End-user delegation is outside the current identity model.
+
+**Create reconciliation.** The client may supply a UUID. A reservation binds it to the tenant, app, entity and verified caller, including actor kind. The database stores a SHA-256 fingerprint of the original JSON object with normalized key order and number scale. The metadata contains no original payload values or credentials. Retain the same UUID and original data when reading by ID or explicitly replaying after a lost response. The CLI emits the UUID before sending a create and accepts `--id` for an explicit replay. A matching replay checks current create and read permission and returns the current record with `201` and the same `Location`. Changed original data produces `409 CREATE_ID_CONFLICT`. Out-of-scope replays and matching replays of deleted records return `404`. Delete keeps the reservation, and an update leaves the original fingerprint intact. Clients that omit `id` still receive a server-generated UUID. If that response is lost, reliable reconciliation is unavailable. Historical IDs are reserved without fingerprints because the original payload cannot be reconstructed reliably.
 
 **Tenant:** one deployment organisation (`opentrix.platform.tenant-id`, default `default`). Every query is scoped by `tenant_id`; this is a boundary, not multi-tenancy.
 
@@ -100,7 +111,10 @@ Platform application errors use `ApiError {status, code, message, errors}`. Vali
 
 ## 7. Limits
 
-- Registered manifests cannot evolve yet (immutable); schema evolution with existing records needs a later decision.
+- Manifest evolution is additive and permits policy tightening. Workflow topology changes and record backfills are deferred.
+- Create reservations are retained after delete. The MVP has no reservation expiry or purge protocol.
+- ACK loss after a successful commit is tested by injecting a failure after PostgreSQL commits. Transport failures are exercised separately with a dropped test HTTP connection.
+- M2 introduced generic Platform changes. Evidence for a second application with zero Platform changes starts from the frozen M2.5 baseline.
 - Search is substring `ILIKE` without a trigram index; fine for catalog sizes, not for large tables.
 - `offset` paging; no cursor.
 - Audit rows are append-only by privilege. Runtime has SELECT/INSERT on audit and lacks UPDATE, DELETE and TRUNCATE.
@@ -113,6 +127,6 @@ Upstream copyright and the SPDX headers of existing files are unchanged. The man
 
 ## 8. Rollback
 
-Every change is additive. **Functional rollback:** set `OPENTRIX_PLATFORM_ENABLED=false` (Platform beans, routes and OpenAPI disappear; the legacy Helpdesk is unaffected) and remove the `platform-migrate` service. Stored Platform data is kept. No existing migration, table or guard was modified.
+**Functional rollback:** set `OPENTRIX_PLATFORM_ENABLED=false` and remove the `platform-migrate` service. This preserves Platform data. Deploy a runtime that expects V3 before re-enabling Platform. An older runtime expects the prior schema version.
 
 **Destructive step, never automatic:** removing the Platform data (`DROP SCHEMA opentrix_platform CASCADE`) deletes all records and audit events. It requires a separate, explicit approval and a verified backup; no script or test in this repository performs it against a persistent database.

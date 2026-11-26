@@ -24,7 +24,7 @@ import java.util.stream.Stream;
 /**
  * Controlled deployment step, run with the migration owner's credentials, never by the runtime:
  * migrates the Platform schema, then registers application manifests from a directory.
- * Registration is insert-only: an identical manifest is a no-op, a changed manifest is rejected.
+ * Stop the runtime before deployment and restart it after successful registration.
  */
 public final class PlatformMigration {
     public static final String SCHEMA = "opentrix_platform";
@@ -40,7 +40,7 @@ public final class PlatformMigration {
         System.out.println("PLATFORM_MIGRATION_OK registered=" + registered);
     }
 
-    /** Returns the application ids that were newly registered. */
+    /** Returns the application ids that were newly registered or upgraded. */
     public static List<String> run(DataSource owner, String runtimeRole, Path manifestDirectory) {
         if (!runtimeRole.matches("[a-z][a-z0-9_]{0,62}")) throw new IllegalArgumentException("Invalid runtime role name");
         List<AppManifest> manifests = readManifests(manifestDirectory);

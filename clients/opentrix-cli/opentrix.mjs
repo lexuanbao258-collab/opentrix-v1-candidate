@@ -6,7 +6,7 @@
  * Minimal external client for the OpenTrix Platform API v1. It runs outside the Platform and outside the
  * Portal BFF: machine identity (OAuth2 client_credentials) -> bearer token -> public API route.
  * No dependencies (Node >= 22). No retries: a write whose connection fails after it was sent reports
- * COMMIT_OUTCOME_UNKNOWN and must be reconciled by reading, never blindly repeated.
+ * COMMIT_OUTCOME_UNKNOWN. A create keeps its UUID for explicit reconciliation.
  *
  * Environment: OPENTRIX_API_URL, OPENTRIX_TOKEN_URL, OPENTRIX_CLIENT_ID, OPENTRIX_CLIENT_SECRET,
  * optional OPENTRIX_CA_FILE (PEM, for a private CA such as the local Caddy CA).
@@ -14,6 +14,7 @@
  */
 import http from "node:http";
 import https from "node:https";
+import { randomUUID } from "node:crypto";
 import { readFileSync } from "node:fs";
 import { fileURLToPath } from "node:url";
 
@@ -31,9 +32,11 @@ export class ApiError extends Error {
 
 /** The request may have reached the server and committed; the caller must reconcile by reading. */
 export class OutcomeUnknownError extends Error {
-  constructor() {
-    super("COMMIT_OUTCOME_UNKNOWN: connection failed after the request was sent; do not retry blindly");
+  constructor(id) {
+    super(id ? `COMMIT_OUTCOME_UNKNOWN: recordId=${id}. Read by ID or replay the original create with --id ${id}.`
+      : "COMMIT_OUTCOME_UNKNOWN: read the record before deciding whether to repeat the write");
     this.code = "COMMIT_OUTCOME_UNKNOWN";
+    this.recordId = id;
   }
 }
 
@@ -119,7 +122,7 @@ export function createClient({ apiUrl, tokenUrl, clientId, clientSecret, caFile,
     return cached.value;
   }
 
-  async function call(method, path, body) {
+  async function call(method, path, body, createId) {
     if (!path.startsWith("/api/v1/apps")) throw new Error("route outside the Platform API");
     const url = new URL(path, api);
     if (url.origin !== api.origin) throw new Error("route outside the configured API origin");
@@ -133,7 +136,7 @@ export function createClient({ apiUrl, tokenUrl, clientId, clientSecret, caFile,
     try {
       response = await send(url, { method, headers, body: payload });
     } catch (error) {
-      if (method !== "GET" && error.sent) throw new OutcomeUnknownError();
+      if (method !== "GET" && error.sent) throw new OutcomeUnknownError(createId);
       throw new Error(`API unreachable: ${error.message}`);
     }
     let parsed;
@@ -142,8 +145,16 @@ export function createClient({ apiUrl, tokenUrl, clientId, clientSecret, caFile,
     } catch {
       /* non-JSON body */
     }
-    if (response.status >= 200 && response.status < 300) return parsed;
-    if (response.status === 503 && method !== "GET") throw new OutcomeUnknownError();
+    if (response.status >= 200 && response.status < 300) {
+      if (createId && (typeof parsed?.id !== "string" || parsed.id.toLowerCase() !== createId.toLowerCase())) {
+        throw new OutcomeUnknownError(createId);
+      }
+      return parsed;
+    }
+    if (method !== "GET" && parsed?.code !== "STORE_UNAVAILABLE"
+        && (response.status === 503 || (createId && [500, 502, 504].includes(response.status)))) {
+      throw new OutcomeUnknownError(createId);
+    }
     throw new ApiError(response.status, parsed);
   }
 
@@ -156,7 +167,8 @@ export function createClient({ apiUrl, tokenUrl, clientId, clientSecret, caFile,
       if (q) params.set("q", q);
       return call("GET", `${base(app, entity)}/records?${params}`);
     },
-    create: (app, entity, data) => call("POST", `${base(app, entity)}/records`, { data }),
+    create: (app, entity, data, id = randomUUID()) =>
+      call("POST", `${base(app, entity)}/records`, { id: recordId(id), data }, id),
     get: (app, entity, id) => call("GET", `${base(app, entity)}/records/${recordId(id)}`),
     update: (app, entity, id, expectedVersion, data) =>
       call("PUT", `${base(app, entity)}/records/${recordId(id)}`, { expectedVersion, data }),
@@ -188,7 +200,7 @@ export function clientFromEnv(env = process.env) {
 
 const USAGE = `usage: opentrix <command> [args]
   apps | entity <app> <entity> | list <app> <entity> [--q text] [--limit n] [--offset n]
-  create <app> <entity> --data '{json}' | get <app> <entity> <id>
+  create <app> <entity> [--id uuid] --data '{json}' | get <app> <entity> <id>
   update <app> <entity> <id> <expectedVersion> --data '{json}' | delete <app> <entity> <id> <expectedVersion>
   workflow <app> <entity> <id> | transition <app> <entity> <id> <transition> <expectedVersion>
   history <app> <entity> <id> | audit <app> <entity> [--record id]`;
@@ -197,17 +209,20 @@ function flag(args, name) {
   const index = args.indexOf(name);
   if (index < 0) return undefined;
   const [value] = args.splice(index, 2).slice(1);
+  if (value === undefined) throw new Error(`${name} requires a value`);
   return value;
 }
 
-export async function run(argv, client = clientFromEnv(), out = console.log) {
+export async function run(argv, client = clientFromEnv(), out = console.log, report = console.error) {
   const args = [...argv];
   const data = flag(args, "--data");
   const q = flag(args, "--q");
   const limit = flag(args, "--limit");
   const offset = flag(args, "--offset");
   const record = flag(args, "--record");
+  const createId = flag(args, "--id");
   const [command, app, entity, id, extra, more] = args;
+  if (createId !== undefined && command !== "create") throw new Error("--id applies to create only");
   const json = () => {
     if (data === undefined) throw new Error("--data is required");
     return JSON.parse(data);
@@ -217,7 +232,12 @@ export async function run(argv, client = clientFromEnv(), out = console.log) {
     apps: () => client.apps(),
     entity: () => client.entity(app, entity),
     list: () => client.list(app, entity, { q, ...paging }),
-    create: () => client.create(app, entity, json()),
+    create: () => {
+      const payload = json();
+      const requestId = createId === undefined ? randomUUID() : recordId(createId);
+      report(`recordId=${requestId}`);
+      return client.create(app, entity, payload, requestId);
+    },
     get: () => client.get(app, entity, id),
     update: () => client.update(app, entity, id, Number(extra), json()),
     delete: () => client.remove(app, entity, id, Number(extra)),

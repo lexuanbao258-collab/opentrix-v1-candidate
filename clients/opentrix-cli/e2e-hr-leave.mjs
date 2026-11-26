@@ -66,6 +66,7 @@ ok("TLS verified; public route requires bearer; unlisted routes and methods are 
 const apps = await employee.apps();
 assert.deepEqual(apps.map((a) => a.id), ["hr-leave"]);
 assert.deepEqual(apps[0].callerRoles, ["employee"]);
+assert.equal(apps[0].version, "1.1.0");
 ok("employee bot discovers only hr-leave, with role employee");
 
 const entity = await employee.entity(APP, ENTITY);
@@ -89,6 +90,12 @@ assert.equal(edited.version, 1);
 assert.equal(await code(employee.update(APP, ENTITY, created.id, 0, { ...data, days: 5 })), "409 VERSION_CONFLICT");
 assert.equal(await code(employee.create(APP, ENTITY, { ...data, days: 99 })), "400 VALIDATION_FAILED");
 ok("update with optimistic version; stale version -> 409; invalid record -> 400");
+
+const replayed = await employee.create(APP, ENTITY, data, created.id);
+assert.equal(replayed.version, 1);
+assert.equal(replayed.data.days, 4);
+assert.equal(await code(employee.create(APP, ENTITY, { ...data, days: 4 }, created.id)), "409 CREATE_ID_CONFLICT");
+ok("replay returns the updated record; changed original data conflicts");
 
 // workflow
 const wf = await employee.workflow(APP, ENTITY, created.id);
@@ -135,7 +142,8 @@ ok("no role in it-helpdesk -> 404; manager reads all but cannot edit");
 // delete
 await employee.remove(APP, ENTITY, other.id, 0);
 assert.equal(await code(employee.get(APP, ENTITY, other.id)), "404 NOT_FOUND");
-ok("delete a DRAFT record; it is gone");
+assert.equal(await code(employee.create(APP, ENTITY, data, other.id)), "404 NOT_FOUND");
+ok("delete a DRAFT record; replay cannot recreate it");
 
 // wrong credentials fail at the identity provider, not at the API
 const forged = createClient({ ...config, clientId: "hr-employee-bot", clientSecret: "wrong-secret" });

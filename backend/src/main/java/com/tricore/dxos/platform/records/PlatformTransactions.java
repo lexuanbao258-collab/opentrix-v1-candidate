@@ -5,6 +5,8 @@ package com.tricore.dxos.platform.records;
 import org.springframework.boot.autoconfigure.condition.ConditionalOnProperty;
 import org.springframework.stereotype.Component;
 import org.springframework.transaction.PlatformTransactionManager;
+import org.springframework.transaction.TransactionDefinition;
+import org.springframework.transaction.support.TransactionSynchronizationManager;
 import org.springframework.transaction.support.TransactionTemplate;
 
 import java.util.Map;
@@ -29,12 +31,19 @@ public class PlatformTransactions {
 
     public PlatformTransactions(PlatformTransactionManager manager) {
         this.template = new TransactionTemplate(manager);
+        this.template.setIsolationLevel(TransactionDefinition.ISOLATION_READ_COMMITTED);
     }
 
     public <T> T write(Supplier<T> work) {
+        if (TransactionSynchronizationManager.isActualTransactionActive()) {
+            throw new IllegalStateException("Platform writes must own the commit boundary");
+        }
         boolean[] bodyReturned = {false};
         try {
             return template.execute(status -> {
+                if (!status.isNewTransaction()) {
+                    throw new IllegalStateException("Platform writes must own the commit boundary");
+                }
                 T result = work.get();
                 bodyReturned[0] = true;
                 return result;

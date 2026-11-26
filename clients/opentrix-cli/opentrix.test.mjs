@@ -29,6 +29,14 @@ before(async () => {
         res.statusCode = 409;
         return res.end(JSON.stringify({ code: "VERSION_CONFLICT" }));
       }
+      if (mode === "unknown") {
+        res.statusCode = 503;
+        return res.end(JSON.stringify({ code: "COMMIT_OUTCOME_UNKNOWN" }));
+      }
+      if (req.method === "POST" && req.url.endsWith("/records")) {
+        res.statusCode = 201;
+        return res.end(JSON.stringify({ id: JSON.parse(body).id }));
+      }
       if (req.method === "DELETE") {
         res.statusCode = 204;
         return res.end();
@@ -96,8 +104,31 @@ test("HTTP errors surface the server error body without retry", async () => {
 test("a write whose connection drops after sending is COMMIT_OUTCOME_UNKNOWN and is not retried", async () => {
   const c = client();
   mode = "drop";
-  await assert.rejects(c.create("hr-leave", "leaveRequest", { reason: "x" }), OutcomeUnknownError);
-  assert.equal(seen.filter((r) => r.method === "POST" && r.url !== "/token").length, 1);
+  await assert.rejects(c.create("hr-leave", "leaveRequest", { reason: "x" }), (error) => {
+    const requests = seen.filter((r) => r.method === "POST" && r.url !== "/token");
+    assert.equal(requests.length, 1);
+    assert.equal(JSON.parse(requests[0].body).id, error.recordId);
+    assert.match(error.recordId, /^[a-f0-9-]{36}$/);
+    return error instanceof OutcomeUnknownError;
+  });
+});
+
+test("CLI reports its create UUID before sending and reuses it only on explicit replay", async () => {
+  const c = client();
+  mode = "unknown";
+  const args = ["create", "hr-leave", "leaveRequest", "--data", '{"reason":"x"}'];
+  let id;
+  const report = (line) => {
+    assert.equal(seen.length, 0);
+    id = line.split("=")[1];
+  };
+  await assert.rejects(run(args, c, () => {}, report), (error) => error.recordId === id && error.message.includes(`--id ${id}`));
+  assert.equal(seen.filter((r) => r.url !== "/token").length, 1);
+  mode = "ok";
+  await run([...args, "--id", id], c, (line) => assert.equal(JSON.parse(line).id, id), () => {});
+  const writes = seen.filter((r) => r.url !== "/token");
+  assert.equal(writes.length, 2);
+  assert.equal(writes[0].body, writes[1].body);
 });
 
 test("a dropped read is a plain failure, not an unknown outcome", async () => {

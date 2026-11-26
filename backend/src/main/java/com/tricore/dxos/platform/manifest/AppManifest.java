@@ -24,10 +24,15 @@ public record AppManifest(String id, String version, String sha256, JsonNode doc
      * per-state editability and per-transition role grants. Terminal states are the ones without outgoing transitions.
      */
     public record Workflow(WorkflowDefinition definition, Map<String, Boolean> editable,
-                           Map<String, Map<String, Scope>> transitionRoles) {
+                           Map<String, Map<String, Scope>> transitionRoles, Set<String> notByCreator) {
 
         public boolean isEditable(String state) {
             return editable.getOrDefault(state, true);
+        }
+
+        public boolean permits(String transitionId, Set<String> callerRoles, boolean creator) {
+            return (!creator || !notByCreator.contains(transitionId))
+                    && scopeFor(transitionId, callerRoles).filter(scope -> scope == Scope.ALL || creator).isPresent();
         }
 
         public Optional<Scope> scopeFor(String transitionId, Set<String> callerRoles) {

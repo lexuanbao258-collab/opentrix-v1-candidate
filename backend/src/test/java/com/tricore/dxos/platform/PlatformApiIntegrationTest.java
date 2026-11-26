@@ -5,12 +5,19 @@ package com.tricore.dxos.platform;
 import com.fasterxml.jackson.databind.JsonNode;
 import com.fasterxml.jackson.databind.ObjectMapper;
 import com.tricore.dxos.infrastructure.identity.security.TestJwt;
+import com.tricore.dxos.platform.records.PlatformException;
+import com.tricore.dxos.platform.records.PlatformTransactions;
+import com.tricore.dxos.platform.records.RecordRepository;
+import com.tricore.dxos.platform.records.RecordService;
+import com.tricore.dxos.platform.registry.PlatformRegistry;
+import com.tricore.dxos.platform.security.PlatformCaller;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.boot.test.autoconfigure.web.servlet.AutoConfigureMockMvc;
 import org.springframework.boot.test.context.SpringBootTest;
 import org.springframework.http.MediaType;
+import org.springframework.jdbc.support.JdbcTransactionManager;
 import org.springframework.security.oauth2.jwt.JwtDecoder;
 import org.springframework.test.context.DynamicPropertyRegistry;
 import org.springframework.test.context.DynamicPropertySource;
@@ -18,10 +25,22 @@ import org.springframework.test.context.bean.override.convention.TestBean;
 import org.springframework.test.web.servlet.MockMvc;
 import org.springframework.test.web.servlet.ResultActions;
 import org.springframework.test.web.servlet.request.MockHttpServletRequestBuilder;
+import org.springframework.transaction.TransactionSystemException;
+import org.springframework.transaction.support.DefaultTransactionStatus;
+import org.springframework.transaction.support.TransactionTemplate;
 
+import java.util.List;
+import java.util.Set;
 import java.util.UUID;
+import java.util.concurrent.Callable;
+import java.util.concurrent.CyclicBarrier;
+import java.util.concurrent.Executors;
+import java.util.concurrent.TimeUnit;
 
 import static org.assertj.core.api.Assertions.assertThat;
+import static org.assertj.core.api.Assertions.assertThatThrownBy;
+import static org.mockito.Mockito.mock;
+import static org.mockito.Mockito.when;
 import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.delete;
 import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.get;
 import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.post;
@@ -74,18 +93,158 @@ class PlatformApiIntegrationTest {
     @BeforeEach
     void clean() {
         // Owner-only reset between tests; the runtime login cannot delete audit rows.
-        DB.ownerSql().execute("TRUNCATE opentrix_platform.records, opentrix_platform.audit_events");
+        DB.ownerSql().execute("TRUNCATE opentrix_platform.records, opentrix_platform.audit_events, opentrix_platform.create_requests");
     }
 
     @Test
-    void cleanDatabaseIsMigratedAndBothManifestsAreRegistered() {
-        assertThat(DB.registered()).containsExactly("docflow", "it-helpdesk");
+    void cleanDatabaseIsMigratedAndManifestsAreRegistered() {
+        assertThat(DB.registered()).contains("docflow", "hr-leave", "it-helpdesk");
         assertThat(DB.runtimeSql().queryForObject("""
                 SELECT version FROM opentrix_platform.platform_schema_history WHERE success ORDER BY installed_rank DESC LIMIT 1""",
-                String.class)).isEqualTo("2");
+                String.class)).isEqualTo("3");
         assertThat(DB.runtimeSql().queryForList(
                 "SELECT entity_key FROM opentrix_platform.entity_definitions ORDER BY 1", String.class))
-                .containsExactly("category", "document");
+                .contains("category", "document", "leaveRequest");
+    }
+
+    @Test
+    void createReplayUsesOriginalPayloadAndReturnsCurrentRecordWithoutResurrectingIt() throws Exception {
+        UUID id = UUID.randomUUID();
+        String original = category("NET", "Network");
+        String reordered = "{\"active\":true,\"name\":\"Network\",\"code\":\"NET\"}";
+        createAt(CATEGORIES, ADMIN, id, original).andExpect(status().isCreated()).andExpect(jsonPath("$.id").value(id.toString()));
+        createAt(CATEGORIES, ADMIN, id, reordered).andExpect(status().isCreated()).andExpect(jsonPath("$.version").value(0));
+        createAt(CATEGORIES, ADMIN, id, category("NET", "New payload")).andExpect(status().isConflict())
+                .andExpect(jsonPath("$.code").value("CREATE_ID_CONFLICT"));
+        call(put(CATEGORIES + "/" + id), ADMIN, "{\"expectedVersion\":0,\"data\":" + category("NET", "Updated") + "}")
+                .andExpect(status().isOk());
+        createAt(CATEGORIES, ADMIN, id, original).andExpect(status().isCreated())
+                .andExpect(jsonPath("$.data.name").value("Updated")).andExpect(jsonPath("$.version").value(1));
+        createAt(CATEGORIES, ADMIN, id, category("NET", "Updated")).andExpect(status().isConflict());
+        call(delete(CATEGORIES + "/" + id + "?expectedVersion=1"), ADMIN, null).andExpect(status().isNoContent());
+        createAt(CATEGORIES, ADMIN, id, original).andExpect(status().isNotFound());
+        assertThat(DB.ownerSql().queryForList("SELECT action FROM opentrix_platform.audit_events ORDER BY event_id", String.class))
+                .containsExactly("CREATE", "UPDATE", "DELETE");
+        assertThat(DB.ownerSql().queryForObject("SELECT count(*) FROM opentrix_platform.records", Long.class)).isZero();
+    }
+
+    @Test
+    void replayIsScopedToOriginalCallerAppAndTenantAndRequiresCurrentPermission() throws Exception {
+        UUID id = UUID.randomUUID();
+        String adminAndAuthor = TestJwt.token("admin-1", "it-helpdesk:admin", "docflow:author");
+        String otherAdmin = TestJwt.token("admin-2", "it-helpdesk:admin");
+        String downgradedAdmin = TestJwt.token("admin-1", "it-helpdesk:requester");
+        String data = category("NET", "Network");
+        createAt(CATEGORIES, adminAndAuthor, id, data).andExpect(status().isCreated());
+        createAt(CATEGORIES, otherAdmin, id, data).andExpect(status().isNotFound());
+        createAt(DOCS, adminAndAuthor, id, doc("same caller across apps")).andExpect(status().isNotFound());
+        createAt(CATEGORIES, downgradedAdmin, id, data).andExpect(status().isForbidden());
+
+        var source = DB.runtime();
+        var caller = stubCaller("oidc:other-tenant-test");
+        var tx = new PlatformTransactions(new JdbcTransactionManager(source));
+        var tenantOriginal = recordService(tx, caller, "tenant-a");
+        var tenantOther = recordService(tx, caller, "tenant-b");
+        UUID tenantId = UUID.randomUUID();
+        tenantOriginal.create("it-helpdesk", "category", tenantId, json.readTree(data));
+        assertThatThrownBy(() -> tenantOther.create("it-helpdesk", "category", tenantId, json.readTree(data)))
+                .isInstanceOfSatisfying(PlatformException.class, e -> assertThat(e.code()).isEqualTo(PlatformException.Code.NOT_FOUND));
+        assertThat(DB.ownerSql().queryForObject("SELECT count(*) FROM opentrix_platform.audit_events", Long.class)).isEqualTo(2);
+    }
+
+    @Test
+    void concurrentDuplicateCreateReturnsTheSameRecordAndAuditsOnce() throws Exception {
+        UUID id = UUID.randomUUID();
+        var barrier = new CyclicBarrier(2);
+        try (var pool = Executors.newFixedThreadPool(2)) {
+            Callable<String> submit = () -> {
+                barrier.await(10, TimeUnit.SECONDS);
+                return body(createAt(CATEGORIES, ADMIN, id, category("NET", "Network"))
+                        .andExpect(status().isCreated())).path("id").asText();
+            };
+            var first = pool.submit(submit);
+            var second = pool.submit(submit);
+            assertThat(List.of(first.get(15, TimeUnit.SECONDS), second.get(15, TimeUnit.SECONDS)))
+                    .containsExactly(id.toString(), id.toString());
+        }
+        assertThat(DB.ownerSql().queryForObject("SELECT count(*) FROM opentrix_platform.records", Long.class)).isEqualTo(1);
+        assertThat(DB.ownerSql().queryForList("SELECT action FROM opentrix_platform.audit_events", String.class)).containsExactly("CREATE");
+    }
+
+    @Test
+    void createValidatesUuidAndComparesNumbersWithoutFloatingPointRounding() throws Exception {
+        call(post(DOCS), AUTHOR_A, "{\"id\":\"0-0-0-0-1\",\"data\":" + doc("original") + "}")
+                .andExpect(status().isBadRequest());
+        UUID id = UUID.randomUUID();
+        String data = doc("original");
+        createAt(DOCS, AUTHOR_A, id, data).andExpect(status().isCreated());
+        createAt(DOCS, AUTHOR_A, id, data.replace("\"pages\":2", "\"pages\":2.00")).andExpect(status().isCreated());
+        createAt(DOCS, AUTHOR_A, id, data.replace("\"pages\":2", "\"pages\":2.0000000000000001"))
+                .andExpect(status().isConflict());
+    }
+
+    @Test
+    void createClaimAndRecordRollBackIfAuditFails() throws Exception {
+        UUID id = UUID.randomUUID();
+        String grant = "INSERT ON opentrix_platform.audit_events";
+        DB.ownerSql().execute("REVOKE " + grant + " FROM " + PlatformTestDatabase.RUNTIME);
+        try {
+            createAt(CATEGORIES, ADMIN, id, category("NET", "Network")).andExpect(status().isInternalServerError());
+        } finally {
+            DB.ownerSql().execute("GRANT " + grant + " TO " + PlatformTestDatabase.RUNTIME);
+        }
+        for (String table : List.of("create_requests", "records", "audit_events")) {
+            assertThat(DB.ownerSql().queryForObject("SELECT count(*) FROM opentrix_platform." + table, Long.class)).isZero();
+        }
+        createAt(CATEGORIES, ADMIN, id, category("NET", "Reconciled")).andExpect(status().isCreated());
+    }
+
+    @Test
+    void simulatedLostCommitAcknowledgmentReconcilesACommittedCreate() throws Exception {
+        var source = DB.runtime();
+        var caller = stubCaller("oidc:ack-test");
+        var simulatedLoss = new JdbcTransactionManager(source) {
+            @Override protected void doCommit(DefaultTransactionStatus status) {
+                super.doCommit(status);
+                throw new TransactionSystemException("Simulated lost acknowledgement after a successful PostgreSQL commit");
+            }
+        };
+        var lossyService = recordService(new PlatformTransactions(simulatedLoss), caller, "default");
+        var normal = recordService(new PlatformTransactions(new JdbcTransactionManager(source)), caller, "default");
+        UUID id = UUID.randomUUID();
+        JsonNode data = json.readTree(category("NET", "Network"));
+        assertThatThrownBy(() -> lossyService.create("it-helpdesk", "category", id, data))
+                .isInstanceOfSatisfying(PlatformException.class,
+                        error -> assertThat(error.code()).isEqualTo(PlatformException.Code.COMMIT_OUTCOME_UNKNOWN));
+        assertThat(normal.get("it-helpdesk", "category", id).data()).isEqualTo(data);
+        assertThat(normal.create("it-helpdesk", "category", id, data).version()).isZero();
+        assertThat(DB.ownerSql().queryForList("SELECT action FROM opentrix_platform.audit_events", String.class)).containsExactly("CREATE");
+        assertThat(DB.ownerSql().queryForObject("SELECT count(*) FROM opentrix_platform.create_requests", Long.class)).isEqualTo(1);
+    }
+
+    @Test
+    void platformWriteMustOwnTheCommitBoundary() {
+        var manager = new JdbcTransactionManager(DB.runtime());
+        var writes = new PlatformTransactions(manager);
+        new TransactionTemplate(manager).executeWithoutResult(status ->
+                assertThatThrownBy(() -> writes.write(() -> { throw new AssertionError("Write body entered"); }))
+                        .isInstanceOf(IllegalStateException.class).hasMessageContaining("commit boundary"));
+        assertThat(writes.write(() -> "standalone")).isEqualTo("standalone");
+    }
+
+    private PlatformCaller stubCaller(String subject) {
+        var caller = mock(PlatformCaller.class);
+        when(caller.require()).thenReturn(new PlatformCaller.Caller(subject, Set.of("it-helpdesk:admin"), false));
+        return caller;
+    }
+
+    private RecordService recordService(PlatformTransactions tx, PlatformCaller caller, String tenant) {
+        var jdbc = DB.runtimeSql();
+        return new RecordService(new PlatformRegistry(jdbc), tx, caller, new RecordRepository(jdbc, json), tenant);
+    }
+
+    private ResultActions createAt(String route, String token, UUID id, String data) throws Exception {
+        return call(post(route), token, "{\"id\":\"" + id + "\",\"data\":" + data + "}");
     }
 
     @Test
@@ -256,22 +415,31 @@ class PlatformApiIntegrationTest {
         mvc.perform(get("/v3/api-docs")).andExpect(status().isUnauthorized());
         JsonNode document = body(call(get("/v3/api-docs"), REQUESTER, null).andExpect(status().isOk()));
         JsonNode paths = document.path("paths");
-        assertThat(paths.path("/api/v1/apps").has("get")).isTrue();
-        assertThat(paths.path("/api/v1/apps").path("get").path("responses").has("200")).isTrue();
-        assertThat(paths.path("/api/v1/apps/{appId}/entities/{entity}").has("get")).isTrue();
-        assertThat(paths.path("/api/v1/apps/{appId}/entities/{entity}/records").has("get")).isTrue();
-        assertThat(paths.path("/api/v1/apps/{appId}/entities/{entity}/records").has("post")).isTrue();
-        assertThat(paths.path("/api/v1/apps/{appId}/entities/{entity}/records")
-                .path("post").path("responses").has("201")).isTrue();
-        JsonNode item = paths.path("/api/v1/apps/{appId}/entities/{entity}/records/{id}");
-        assertThat(item.has("get") && item.has("put") && item.has("delete")).isTrue();
-        assertThat(item.path("delete").path("responses").has("204")).isTrue();
-        assertThat(item.path("put").path("responses").fieldNames()).toIterable().contains("200", "401", "409");
-        assertThat(paths.path("/api/v1/apps/{appId}/entities/{entity}/records/{id}/transitions/{transition}")
-                .path("post").path("responses").fieldNames()).toIterable().contains("200", "401", "409", "503");
+        String app = "/api/v1/apps/{appId}";
+        String entity = app + "/entities/{entity}";
+        String records = entity + "/records";
+        String record = records + "/{id}";
+        assertResponses(paths.path("/api/v1/apps").path("get"), "200", "401", "503");
+        assertResponses(paths.path(app).path("get"), "200", "401", "404", "503");
+        assertResponses(paths.path(entity).path("get"), "200", "401", "404", "503");
+        for (String path : List.of(records, record, record + "/workflow", record + "/history", entity + "/audit")) {
+            assertResponses(paths.path(path).path("get"), "200", "400", "401", "403", "404", "503");
+        }
+        assertResponses(paths.path(records).path("post"), "201", "400", "401", "403", "404", "409", "415", "503");
+        assertResponses(paths.path(record).path("put"), "200", "400", "401", "403", "404", "409", "415", "503");
+        assertResponses(paths.path(record).path("delete"), "204", "400", "401", "403", "404", "409", "503");
+        assertResponses(paths.path(record + "/transitions/{transition}").path("post"),
+                "200", "400", "401", "403", "404", "409", "415", "503");
         assertThat(paths.fieldNames()).toIterable().allMatch(path -> path.startsWith("/api/v1/apps"));
+        assertThat(document.at("/components/schemas/CreateRecordRequest/properties/id/format").asText()).isEqualTo("uuid");
         assertThat(document.path("components").path("securitySchemes").path("bearer").path("scheme").asText())
                 .isEqualTo("bearer");
+    }
+
+    private static void assertResponses(JsonNode operation, String... expected) {
+        assertThat(operation.path("responses").fieldNames()).toIterable().containsExactlyInAnyOrder(expected);
+        if (!operation.path("operationId").asText().matches("create|update|delete|transition")) return;
+        assertThat(operation.at("/responses/503/description").asText()).contains("COMMIT_OUTCOME_UNKNOWN");
     }
 
     /**

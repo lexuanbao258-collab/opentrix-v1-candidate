@@ -331,6 +331,10 @@
               "to": {
                 "$ref": "#/$defs/stateName"
               },
+              "notByCreator": {
+                "type": "boolean",
+                "description": "Deny the transition to the record creator, even if the caller holds an applicable role."
+              },
               "roles": {
                 "$ref": "#/$defs/grants"
               }

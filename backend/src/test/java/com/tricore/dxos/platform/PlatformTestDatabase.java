@@ -77,11 +77,13 @@ public final class PlatformTestDatabase {
                 source(name, RUNTIME, PASSWORD), List.of());
     }
 
-    /** IT Helpdesk from the repository plus the test-only docflow fixture (workflow, sensitive field, audit grant, cross-app checks). */
+    /** Shipped applications plus the docflow fixture. */
     public static Path manifestDirectory() {
-        try {
+        try (var apps = Files.list(Path.of("..", "apps"))) {
             Path directory = Files.createTempDirectory("opentrix-manifests");
-            copy(Path.of("..", "apps", "it-helpdesk", "app.json"), directory.resolve("it-helpdesk"));
+            for (Path app : apps.toList()) {
+                if (Files.isRegularFile(app.resolve("app.json"))) copy(app.resolve("app.json"), directory.resolve(app.getFileName()));
+            }
             copy(Path.of("src", "test", "resources", "platform", "manifests", "docflow", "app.json"),
                     directory.resolve("docflow"));
             return directory;

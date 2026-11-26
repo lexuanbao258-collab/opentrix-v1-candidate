@@ -126,18 +126,30 @@ public class RecordService {
         return visible(view, id);
     }
 
-    public RecordRepository.StoredRecord create(String appId, String entityKey, JsonNode data) {
-        return tx.write(() -> doCreate(appId, entityKey, data));
+    public RecordRepository.StoredRecord create(String appId, String entityKey, UUID requestedId, JsonNode data) {
+        return tx.write(() -> doCreate(appId, entityKey, requestedId, data));
     }
 
-    private RecordRepository.StoredRecord doCreate(String appId, String entityKey, JsonNode data) {
+    private RecordRepository.StoredRecord doCreate(String appId, String entityKey, UUID requestedId, JsonNode data) {
         var view = resolve(appId, entityKey);
         require(view, Operation.CREATE);
-        validate(view, data);
+        if (data == null || !data.isObject()) throw validation("data", "must be a JSON object");
         var caller = callers.require();
+        var scope = scope(view);
+        UUID id = requestedId == null ? UUID.randomUUID() : requestedId;
+        byte[] fingerprint = requestedId == null ? null : records.createFingerprint(data);
+        if (!records.claimCreate(scope, id, caller.subjectId(), caller.machine(), fingerprint)) {
+            require(view, Operation.READ);
+            if (requestedId == null || !records.matchesCreate(scope, id, caller.subjectId(), caller.machine(), fingerprint)) {
+                throw new PlatformException(PlatformException.Code.CREATE_ID_CONFLICT,
+                        "Record ID already reserved for a different create request", Map.of());
+            }
+            return visible(view, id);
+        }
+        validate(view, data);
         String initial = view.entity().workflow() == null ? null : view.entity().workflow().definition().initialState();
-        var created = records.insert(scope(view), UUID.randomUUID(), data, initial, caller.subjectId());
-        records.audit(scope(view), created.id(), new AuditEvent("CREATE", caller.subjectId(), caller.machine(),
+        var created = records.insert(scope, id, data, initial, caller.subjectId());
+        records.audit(scope, created.id(), new AuditEvent("CREATE", caller.subjectId(), caller.machine(),
                 created.version(), null, null, initial, null, redact(view.entity(), created.data())));
         return created;
     }
@@ -203,8 +215,9 @@ public class RecordService {
         if (!workflow.transitionRoles().containsKey(transitionId)) {
             throw new PlatformException(PlatformException.Code.NOT_FOUND, "Unknown transition", Map.of());
         }
-        Scope granted = workflow.scopeFor(transitionId, view.callerRoles()).orElseThrow(PlatformException::forbidden);
-        if (granted == Scope.OWN && !current.createdBy().equals(caller.subjectId())) throw PlatformException.forbidden();
+        if (!workflow.permits(transitionId, view.callerRoles(), current.createdBy().equals(caller.subjectId()))) {
+            throw PlatformException.forbidden();
+        }
 
         // The reused domain decides version, source state and terminal-state rules; it owns no persistence here.
         var definition = workflow.definition();
@@ -267,8 +280,7 @@ public class RecordService {
         List<Action> actions = new ArrayList<>();
         for (var transition : workflow.definition().transitions()) {
             if (!transition.sourceState().equals(current.state())) continue;
-            var scope = workflow.scopeFor(transition.transitionId(), view.callerRoles());
-            if (scope.isPresent() && (scope.get() == Scope.ALL || owner)) {
+            if (workflow.permits(transition.transitionId(), view.callerRoles(), owner)) {
                 actions.add(new Action(transition.transitionId(), transition.targetState()));
             }
         }

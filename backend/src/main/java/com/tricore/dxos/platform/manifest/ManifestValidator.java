@@ -167,6 +167,7 @@ public final class ManifestValidator {
             editable.put(state.getKey(), state.getValue().path("editable").asBoolean(true));
         }
         Set<com.tricore.dxos.core.workflow.WorkflowTransition> transitions = new LinkedHashSet<>();
+        Set<String> notByCreator = new LinkedHashSet<>();
         Map<String, Map<String, AppManifest.Scope>> grants = new LinkedHashMap<>();
         for (var transition : node.path("transitions").properties()) {
             String from = transition.getValue().path("from").asText();
@@ -185,6 +186,9 @@ public final class ManifestValidator {
             }
             if (roleScopes.isEmpty()) problems.add(where + "/transitions/" + transition.getKey() + "/roles: at least one role is required");
             grants.put(transition.getKey(), Map.copyOf(roleScopes));
+            if (transition.getValue().path("notByCreator").asBoolean()) {
+                notByCreator.add(transition.getKey());
+            }
             transitions.add(new com.tricore.dxos.core.workflow.WorkflowTransition(transition.getKey(), from, to));
         }
         String initial = node.path("initialState").asText();
@@ -211,7 +215,7 @@ public final class ManifestValidator {
         for (String state : states) {
             if (!reachable.contains(state)) problems.add(where + "/states/" + state + ": unreachable from the initial state");
         }
-        return new AppManifest.Workflow(definition, Map.copyOf(editable), Map.copyOf(grants));
+        return new AppManifest.Workflow(definition, Map.copyOf(editable), Map.copyOf(grants), Set.copyOf(notByCreator));
     }
 
     private static Map<String, String> errors(Schema schema, JsonNode instance) {

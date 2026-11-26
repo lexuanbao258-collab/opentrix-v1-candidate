@@ -140,6 +140,11 @@
         "properties" : {
           "data" : {
             "$ref" : "#/components/schemas/JsonNode"
+          },
+          "id" : {
+            "description" : "Client-supplied UUID to reconcile this create",
+            "format" : "uuid",
+            "type" : "string"
           }
         },
         "required" : [ "data" ],
@@ -322,6 +327,7 @@
       "TransitionSummary" : {
         "properties" : {
           "allowedForCaller" : {
+            "description" : "Role grant only. Use record workflow allowedActions for executable transitions.",
             "type" : "boolean"
           },
           "from" : {
@@ -335,6 +341,9 @@
               "type" : "string"
             },
             "type" : "object"
+          },
+          "notByCreator" : {
+            "type" : "boolean"
           },
           "to" : {
             "type" : "string"
@@ -441,6 +450,16 @@
               }
             },
             "description" : "Missing or invalid bearer token"
+          },
+          "503" : {
+            "content" : {
+              "application/json" : {
+                "schema" : {
+                  "$ref" : "#/components/schemas/ApiError"
+                }
+              }
+            },
+            "description" : "STORE_UNAVAILABLE (transaction could not start)"
           }
         },
         "security" : [ {
@@ -481,6 +500,26 @@
               }
             },
             "description" : "Missing or invalid bearer token"
+          },
+          "404" : {
+            "content" : {
+              "application/json" : {
+                "schema" : {
+                  "$ref" : "#/components/schemas/ApiError"
+                }
+              }
+            },
+            "description" : "Application is missing or hidden"
+          },
+          "503" : {
+            "content" : {
+              "application/json" : {
+                "schema" : {
+                  "$ref" : "#/components/schemas/ApiError"
+                }
+              }
+            },
+            "description" : "STORE_UNAVAILABLE (transaction could not start)"
           }
         },
         "security" : [ {
@@ -528,6 +567,26 @@
               }
             },
             "description" : "Missing or invalid bearer token"
+          },
+          "404" : {
+            "content" : {
+              "application/json" : {
+                "schema" : {
+                  "$ref" : "#/components/schemas/ApiError"
+                }
+              }
+            },
+            "description" : "Application or entity is missing or hidden"
+          },
+          "503" : {
+            "content" : {
+              "application/json" : {
+                "schema" : {
+                  "$ref" : "#/components/schemas/ApiError"
+                }
+              }
+            },
+            "description" : "STORE_UNAVAILABLE (transaction could not start)"
           }
         },
         "security" : [ {
@@ -596,6 +655,16 @@
             },
             "description" : "OK"
           },
+          "400" : {
+            "content" : {
+              "application/json" : {
+                "schema" : {
+                  "$ref" : "#/components/schemas/ApiError"
+                }
+              }
+            },
+            "description" : "Invalid record UUID or paging parameters"
+          },
           "401" : {
             "content" : {
               "application/json" : {
@@ -605,6 +674,36 @@
               }
             },
             "description" : "Missing or invalid bearer token"
+          },
+          "403" : {
+            "content" : {
+              "application/json" : {
+                "schema" : {
+                  "$ref" : "#/components/schemas/ApiError"
+                }
+              }
+            },
+            "description" : "Audit permission denied"
+          },
+          "404" : {
+            "content" : {
+              "application/json" : {
+                "schema" : {
+                  "$ref" : "#/components/schemas/ApiError"
+                }
+              }
+            },
+            "description" : "Application or entity is missing or hidden"
+          },
+          "503" : {
+            "content" : {
+              "application/json" : {
+                "schema" : {
+                  "$ref" : "#/components/schemas/ApiError"
+                }
+              }
+            },
+            "description" : "STORE_UNAVAILABLE (transaction could not start)"
           }
         },
         "security" : [ {
@@ -674,6 +773,16 @@
             },
             "description" : "OK"
           },
+          "400" : {
+            "content" : {
+              "application/json" : {
+                "schema" : {
+                  "$ref" : "#/components/schemas/ApiError"
+                }
+              }
+            },
+            "description" : "Invalid search or paging parameters"
+          },
           "401" : {
             "content" : {
               "application/json" : {
@@ -683,6 +792,36 @@
               }
             },
             "description" : "Missing or invalid bearer token"
+          },
+          "403" : {
+            "content" : {
+              "application/json" : {
+                "schema" : {
+                  "$ref" : "#/components/schemas/ApiError"
+                }
+              }
+            },
+            "description" : "Read permission denied"
+          },
+          "404" : {
+            "content" : {
+              "application/json" : {
+                "schema" : {
+                  "$ref" : "#/components/schemas/ApiError"
+                }
+              }
+            },
+            "description" : "Application or entity is missing or hidden"
+          },
+          "503" : {
+            "content" : {
+              "application/json" : {
+                "schema" : {
+                  "$ref" : "#/components/schemas/ApiError"
+                }
+              }
+            },
+            "description" : "STORE_UNAVAILABLE (transaction could not start)"
           }
         },
         "security" : [ {
@@ -692,7 +831,7 @@
         "tags" : [ "Platform" ]
       },
       "post" : {
-        "description" : "Invalid data returns 400. If a commit cannot be confirmed, 503 COMMIT_OUTCOME_UNKNOWN requires reconciliation before another write.",
+        "description" : "Supply and retain a UUID in id to reconcile a create. With the same tenant, app, entity, caller and original data, a replay returns the current readable record with 201 and the same Location. A different payload returns 409, and a deleted or out-of-scope record returns 404. After COMMIT_OUTCOME_UNKNOWN or a lost response, read by UUID or explicitly replay the original request with the same UUID to reconcile. Never substitute a new UUID. Requests without id still receive a server-generated UUID and cannot be reliably reconciled after a lost response.",
         "operationId" : "create",
         "parameters" : [ {
           "in" : "path",
@@ -730,6 +869,16 @@
             },
             "description" : "Created"
           },
+          "400" : {
+            "content" : {
+              "application/json" : {
+                "schema" : {
+                  "$ref" : "#/components/schemas/ApiError"
+                }
+              }
+            },
+            "description" : "Invalid UUID, request body or record data"
+          },
           "401" : {
             "content" : {
               "application/json" : {
@@ -739,6 +888,56 @@
               }
             },
             "description" : "Missing or invalid bearer token"
+          },
+          "403" : {
+            "content" : {
+              "application/json" : {
+                "schema" : {
+                  "$ref" : "#/components/schemas/ApiError"
+                }
+              }
+            },
+            "description" : "Create or replay read permission denied"
+          },
+          "404" : {
+            "content" : {
+              "application/json" : {
+                "schema" : {
+                  "$ref" : "#/components/schemas/ApiError"
+                }
+              }
+            },
+            "description" : "Application, entity or replayed record is missing or hidden"
+          },
+          "409" : {
+            "content" : {
+              "application/json" : {
+                "schema" : {
+                  "$ref" : "#/components/schemas/ApiError"
+                }
+              }
+            },
+            "description" : "CREATE_ID_CONFLICT: UUID already reserved for another payload or a historical create"
+          },
+          "415" : {
+            "content" : {
+              "application/json" : {
+                "schema" : {
+                  "$ref" : "#/components/schemas/ApiError"
+                }
+              }
+            },
+            "description" : "Unsupported request media type"
+          },
+          "503" : {
+            "content" : {
+              "application/json" : {
+                "schema" : {
+                  "$ref" : "#/components/schemas/ApiError"
+                }
+              }
+            },
+            "description" : "STORE_UNAVAILABLE or COMMIT_OUTCOME_UNKNOWN (reconcile using the same UUID)"
           }
         },
         "security" : [ {
@@ -787,6 +986,16 @@
           "204" : {
             "description" : "No Content"
           },
+          "400" : {
+            "content" : {
+              "application/json" : {
+                "schema" : {
+                  "$ref" : "#/components/schemas/ApiError"
+                }
+              }
+            },
+            "description" : "Invalid record UUID or expected version"
+          },
           "401" : {
             "content" : {
               "application/json" : {
@@ -797,6 +1006,26 @@
             },
             "description" : "Missing or invalid bearer token"
           },
+          "403" : {
+            "content" : {
+              "application/json" : {
+                "schema" : {
+                  "$ref" : "#/components/schemas/ApiError"
+                }
+              }
+            },
+            "description" : "Delete permission denied"
+          },
+          "404" : {
+            "content" : {
+              "application/json" : {
+                "schema" : {
+                  "$ref" : "#/components/schemas/ApiError"
+                }
+              }
+            },
+            "description" : "Application, entity or record is missing or hidden"
+          },
           "409" : {
             "content" : {
               "application/json" : {
@@ -806,6 +1035,16 @@
               }
             },
             "description" : "VERSION_CONFLICT or STATE_LOCKED"
+          },
+          "503" : {
+            "content" : {
+              "application/json" : {
+                "schema" : {
+                  "$ref" : "#/components/schemas/ApiError"
+                }
+              }
+            },
+            "description" : "STORE_UNAVAILABLE or COMMIT_OUTCOME_UNKNOWN (read to reconcile)"
           }
         },
         "security" : [ {
@@ -850,6 +1089,16 @@
             },
             "description" : "OK"
           },
+          "400" : {
+            "content" : {
+              "application/json" : {
+                "schema" : {
+                  "$ref" : "#/components/schemas/ApiError"
+                }
+              }
+            },
+            "description" : "Invalid record UUID"
+          },
           "401" : {
             "content" : {
               "application/json" : {
@@ -859,6 +1108,36 @@
               }
             },
             "description" : "Missing or invalid bearer token"
+          },
+          "403" : {
+            "content" : {
+              "application/json" : {
+                "schema" : {
+                  "$ref" : "#/components/schemas/ApiError"
+                }
+              }
+            },
+            "description" : "Read permission denied"
+          },
+          "404" : {
+            "content" : {
+              "application/json" : {
+                "schema" : {
+                  "$ref" : "#/components/schemas/ApiError"
+                }
+              }
+            },
+            "description" : "Application, entity or record is missing or hidden"
+          },
+          "503" : {
+            "content" : {
+              "application/json" : {
+                "schema" : {
+                  "$ref" : "#/components/schemas/ApiError"
+                }
+              }
+            },
+            "description" : "STORE_UNAVAILABLE (transaction could not start)"
           }
         },
         "security" : [ {
@@ -913,6 +1192,16 @@
             },
             "description" : "OK"
           },
+          "400" : {
+            "content" : {
+              "application/json" : {
+                "schema" : {
+                  "$ref" : "#/components/schemas/ApiError"
+                }
+              }
+            },
+            "description" : "Invalid record UUID, version or data"
+          },
           "401" : {
             "content" : {
               "application/json" : {
@@ -923,6 +1212,26 @@
             },
             "description" : "Missing or invalid bearer token"
           },
+          "403" : {
+            "content" : {
+              "application/json" : {
+                "schema" : {
+                  "$ref" : "#/components/schemas/ApiError"
+                }
+              }
+            },
+            "description" : "Update permission denied"
+          },
+          "404" : {
+            "content" : {
+              "application/json" : {
+                "schema" : {
+                  "$ref" : "#/components/schemas/ApiError"
+                }
+              }
+            },
+            "description" : "Application, entity or record is missing or hidden"
+          },
           "409" : {
             "content" : {
               "application/json" : {
@@ -932,6 +1241,26 @@
               }
             },
             "description" : "VERSION_CONFLICT or STATE_LOCKED"
+          },
+          "415" : {
+            "content" : {
+              "application/json" : {
+                "schema" : {
+                  "$ref" : "#/components/schemas/ApiError"
+                }
+              }
+            },
+            "description" : "Unsupported request media type"
+          },
+          "503" : {
+            "content" : {
+              "application/json" : {
+                "schema" : {
+                  "$ref" : "#/components/schemas/ApiError"
+                }
+              }
+            },
+            "description" : "STORE_UNAVAILABLE or COMMIT_OUTCOME_UNKNOWN (read to reconcile)"
           }
         },
         "security" : [ {
@@ -981,6 +1310,16 @@
             },
             "description" : "OK"
           },
+          "400" : {
+            "content" : {
+              "application/json" : {
+                "schema" : {
+                  "$ref" : "#/components/schemas/ApiError"
+                }
+              }
+            },
+            "description" : "Invalid record UUID"
+          },
           "401" : {
             "content" : {
               "application/json" : {
@@ -990,6 +1329,36 @@
               }
             },
             "description" : "Missing or invalid bearer token"
+          },
+          "403" : {
+            "content" : {
+              "application/json" : {
+                "schema" : {
+                  "$ref" : "#/components/schemas/ApiError"
+                }
+              }
+            },
+            "description" : "Read permission denied"
+          },
+          "404" : {
+            "content" : {
+              "application/json" : {
+                "schema" : {
+                  "$ref" : "#/components/schemas/ApiError"
+                }
+              }
+            },
+            "description" : "Application, entity, workflow or record is missing or hidden"
+          },
+          "503" : {
+            "content" : {
+              "application/json" : {
+                "schema" : {
+                  "$ref" : "#/components/schemas/ApiError"
+                }
+              }
+            },
+            "description" : "STORE_UNAVAILABLE (transaction could not start)"
           }
         },
         "security" : [ {
@@ -1001,7 +1370,7 @@
     },
     "/api/v1/apps/{appId}/entities/{entity}/records/{id}/transitions/{transition}" : {
       "post" : {
-        "description" : "Visibility and transition role scopes apply. An unknown transition or hidden record returns 404. A caller lacking the transition grant for a visible record receives 403.",
+        "description" : "Visibility and transition role scopes apply. An unknown transition or hidden record returns 404. A caller lacking the transition grant or barred by notByCreator receives 403 for a visible record.",
         "operationId" : "transition",
         "parameters" : [ {
           "in" : "path",
@@ -1054,6 +1423,16 @@
             },
             "description" : "OK"
           },
+          "400" : {
+            "content" : {
+              "application/json" : {
+                "schema" : {
+                  "$ref" : "#/components/schemas/ApiError"
+                }
+              }
+            },
+            "description" : "Invalid record UUID or expected version"
+          },
           "401" : {
             "content" : {
               "application/json" : {
@@ -1064,6 +1443,26 @@
             },
             "description" : "Missing or invalid bearer token"
           },
+          "403" : {
+            "content" : {
+              "application/json" : {
+                "schema" : {
+                  "$ref" : "#/components/schemas/ApiError"
+                }
+              }
+            },
+            "description" : "Transition denied by role, scope or creator policy"
+          },
+          "404" : {
+            "content" : {
+              "application/json" : {
+                "schema" : {
+                  "$ref" : "#/components/schemas/ApiError"
+                }
+              }
+            },
+            "description" : "Application, entity, workflow, record or transition is missing or hidden"
+          },
           "409" : {
             "content" : {
               "application/json" : {
@@ -1073,6 +1472,16 @@
               }
             },
             "description" : "VERSION_CONFLICT or TRANSITION_NOT_ALLOWED"
+          },
+          "415" : {
+            "content" : {
+              "application/json" : {
+                "schema" : {
+                  "$ref" : "#/components/schemas/ApiError"
+                }
+              }
+            },
+            "description" : "Unsupported request media type"
           },
           "503" : {
             "content" : {
@@ -1129,6 +1538,16 @@
             },
             "description" : "OK"
           },
+          "400" : {
+            "content" : {
+              "application/json" : {
+                "schema" : {
+                  "$ref" : "#/components/schemas/ApiError"
+                }
+              }
+            },
+            "description" : "Invalid record UUID"
+          },
           "401" : {
             "content" : {
               "application/json" : {
@@ -1138,6 +1557,36 @@
               }
             },
             "description" : "Missing or invalid bearer token"
+          },
+          "403" : {
+            "content" : {
+              "application/json" : {
+                "schema" : {
+                  "$ref" : "#/components/schemas/ApiError"
+                }
+              }
+            },
+            "description" : "Read permission denied"
+          },
+          "404" : {
+            "content" : {
+              "application/json" : {
+                "schema" : {
+                  "$ref" : "#/components/schemas/ApiError"
+                }
+              }
+            },
+            "description" : "Application, entity, workflow or record is missing or hidden"
+          },
+          "503" : {
+            "content" : {
+              "application/json" : {
+                "schema" : {
+                  "$ref" : "#/components/schemas/ApiError"
+                }
+              }
+            },
+            "description" : "STORE_UNAVAILABLE (transaction could not start)"
           }
         },
         "security" : [ {

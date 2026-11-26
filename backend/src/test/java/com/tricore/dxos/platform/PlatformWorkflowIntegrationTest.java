@@ -7,6 +7,8 @@ import com.fasterxml.jackson.databind.ObjectMapper;
 import com.tricore.dxos.infrastructure.identity.security.TestJwt;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
+import org.junit.jupiter.params.ParameterizedTest;
+import org.junit.jupiter.params.provider.ValueSource;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.boot.test.autoconfigure.web.servlet.AutoConfigureMockMvc;
 import org.springframework.boot.test.context.SpringBootTest;
@@ -177,6 +179,35 @@ class PlatformWorkflowIntegrationTest {
         assertThat(DB.superuserSql().queryForObject(
                 "SELECT count(*) FROM opentrix_platform.audit_events WHERE record_id = ?::uuid AND action = 'TRANSITION'",
                 Long.class, id)).isEqualTo(1);
+    }
+
+    @ParameterizedTest
+    @ValueSource(booleans = {false, true})
+    void hrCreatorCannotApproveOrRejectEvenWithManagerRole(boolean machine) throws Exception {
+        String creator = machine ? TestJwt.machineToken("hr-dual-bot", "hr-leave:employee", "hr-leave:manager")
+                : TestJwt.token("hr-dual-user", "hr-leave:employee", "hr-leave:manager");
+        String manager = machine ? TestJwt.machineToken("hr-manager-bot", "hr-leave:manager")
+                : TestJwt.token("hr-manager-user", "hr-leave:manager");
+        String records = "/api/v1/apps/hr-leave/entities/leaveRequest/records";
+        String id = body(call(post(records), creator, """
+                {"data":{"kind":"ANNUAL","startDate":"2026-12-20","days":2,"reason":"family"}}""")
+                .andExpect(status().isCreated()).andExpect(jsonPath("$.state").value("DRAFT"))).path("id").asText();
+        String record = records + "/" + id;
+        call(post(record + "/transitions/submit"), creator, "{\"expectedVersion\":0}").andExpect(status().isOk());
+        var creatorActions = body(call(get(record + "/workflow"), creator, null).andExpect(status().isOk()));
+        assertThat(creatorActions.path("allowedActions").findValuesAsText("id")).containsExactly("withdraw");
+        for (String denied : List.of("approve", "reject")) {
+            call(post(record + "/transitions/" + denied), creator, "{\"expectedVersion\":1}").andExpect(status().isForbidden());
+        }
+        assertThat(state(id)).isEqualTo("PENDING:1");
+        String kind = machine ? "MACHINE" : "USER";
+        assertThat(DB.ownerSql().queryForList("""
+                SELECT action || ':' || actor_type FROM opentrix_platform.audit_events
+                WHERE record_id = ?::uuid ORDER BY event_id""", String.class, id)).containsExactly("CREATE:" + kind, "TRANSITION:" + kind);
+        var managerActions = body(call(get(record + "/workflow"), manager, null).andExpect(status().isOk()));
+        assertThat(managerActions.path("allowedActions").findValuesAsText("id")).containsExactly("approve", "reject");
+        call(post(record + "/transitions/approve"), manager, "{\"expectedVersion\":1}").andExpect(status().isOk())
+                .andExpect(jsonPath("$.state").value("APPROVED")).andExpect(jsonPath("$.version").value(2));
     }
 
     @Test

@@ -35,6 +35,10 @@ class PlatformDatabaseSecurityTest {
                 .rootCause().hasMessageContaining("permission denied");
         assertThatThrownBy(() -> runtime.update("DELETE FROM opentrix_platform.entity_definitions"))
                 .rootCause().hasMessageContaining("permission denied");
+        assertThatThrownBy(() -> runtime.update("UPDATE opentrix_platform.application_versions SET manifest = '{}'"))
+                .rootCause().hasMessageContaining("permission denied");
+        assertThatThrownBy(() -> runtime.update("DELETE FROM opentrix_platform.create_requests"))
+                .rootCause().hasMessageContaining("permission denied");
     }
 
     @Test
@@ -50,7 +54,9 @@ class PlatformDatabaseSecurityTest {
     void runtimeGuardRejectsAnyPrivilegeOutsideTheExpectedMatrix() {
         var owner = DB.ownerSql();
         for (String extra : new String[]{"UPDATE ON opentrix_platform.audit_events", "TRUNCATE ON opentrix_platform.records",
-                "INSERT ON opentrix_platform.applications", "DELETE ON opentrix_platform.entity_definitions"}) {
+                "INSERT ON opentrix_platform.applications", "DELETE ON opentrix_platform.entity_definitions",
+                "UPDATE ON opentrix_platform.application_versions", "DELETE ON opentrix_platform.create_requests",
+                "UPDATE (actor_id) ON opentrix_platform.audit_events"}) {
             owner.execute("GRANT " + extra + " TO " + PlatformTestDatabase.RUNTIME);
             try {
                 assertThatThrownBy(() -> PlatformRuntimeGuard.verify(DB.runtimeSql())).hasMessageContaining("expected matrix");
@@ -63,6 +69,18 @@ class PlatformDatabaseSecurityTest {
             assertThatThrownBy(() -> PlatformRuntimeGuard.verify(DB.runtimeSql())).hasMessageContaining("expected matrix");
         } finally {
             owner.execute("GRANT DELETE ON opentrix_platform.records TO " + PlatformTestDatabase.RUNTIME);
+        }
+        PlatformRuntimeGuard.verify(DB.runtimeSql());
+    }
+
+    @Test
+    void noinheritMembershipWithSetRoleIsRejectedAtStartup() {
+        var admin = DB.superuserSql();
+        admin.execute("GRANT " + PlatformTestDatabase.OWNER + " TO " + PlatformTestDatabase.RUNTIME + " WITH INHERIT FALSE, SET TRUE");
+        try {
+            assertThatThrownBy(() -> new PlatformRuntimeGuard(DB.runtimeSql())).hasMessageContaining("must not hold DDL");
+        } finally {
+            admin.execute("REVOKE " + PlatformTestDatabase.OWNER + " FROM " + PlatformTestDatabase.RUNTIME);
         }
         PlatformRuntimeGuard.verify(DB.runtimeSql());
     }
@@ -154,7 +172,7 @@ class PlatformDatabaseSecurityTest {
         assertThatThrownBy(() -> PlatformMigration.run(DB.owner(), PlatformTestDatabase.RUNTIME, manifests))
                 .hasMessageContaining("immutable");
         assertThat(DB.superuserSql().queryForObject(
-                "SELECT count(*) FROM opentrix_platform.applications", Long.class)).isEqualTo(2);
+                "SELECT count(*) FROM opentrix_platform.applications", Long.class)).isEqualTo(DB.registered().size());
     }
 
     @Test
