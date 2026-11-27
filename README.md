@@ -6,6 +6,20 @@
 
 <a id="en"></a>
 
+## OpenTrix Platform candidate
+
+This independent candidate is an API-first foundation for internal business applications. It provides authenticated
+application discovery, manifest-defined records and workflows, scoped permissions and audit. The baseline for Platform
+runtime code is [`f401b6e79930a1386e71e92a91ae6a909cfa1e59`](https://github.com/lexuanbao258-collab/opentrix-v1-candidate/commit/f401b6e79930a1386e71e92a91ae6a909cfa1e59).
+The candidate is intended for local evaluation with synthetic data. Production deployment and upstream approval are outside
+its current status. The legacy OpenTrix demo remains documented below.
+
+- Design and lifecycle in [ADR-C001](docs/08-decisions/ADR-C001-candidate-platform-baseline.md) and the [Platform OpenAPI v1 contract](docs/api/openapi-v1.json).
+- IT Helpdesk and HR Leave in the [independent ESM example](https://github.com/lexuanbao258-collab/opentrix-enterprise-demo/tree/a4db6fe2127a936c85ee20aa2d3cf557fa107c3f).
+- Procurement M5 is a Python CLI in the sibling local checkout `opentrix-procurement-demo`. Its `README.md` covers the manifest and machine identities. A public remote has not been confirmed.
+
+- Candidate release integration is staged in the [M6.4 integration plan](docs/06-deployment/m64-release-integration-plan.md).
+
 ## Overview
 
 OpenTrix is an open-source platform for building internal service applications on a shared core,

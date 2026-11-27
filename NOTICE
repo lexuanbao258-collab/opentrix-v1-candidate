@@ -63,3 +63,8 @@ commit 1ec99ad (Phan Hai Yen, Apache-2.0). Upstream copyright notices are kept.
 
 Candidate M2 extends the Platform with manifest-driven workflows, audit
 reads and an external REST client, with AI assistance from Claude and Codex.
+Candidate M2.5 hardens manifest deployment, write outcomes and record
+reconciliation. M3/M4 (ESM) and M5 (Procurement) are independent integration
+examples and preserve the frozen Platform runtime baseline. Codex assisted
+with the M5 experiment and M6.1-FIX deployment and documentation changes.
+These milestones are candidate work and carry no upstream approval.

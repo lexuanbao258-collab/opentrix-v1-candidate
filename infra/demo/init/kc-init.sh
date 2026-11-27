@@ -6,16 +6,10 @@ set -euo pipefail
 KC=/opt/keycloak/bin/kcadm.sh
 CFG=/tmp/kcadm.config
 
-echo "== cho Keycloak + realm tricore"
-for ((i = 1; i <= 90; i++)); do
-  if $KC config credentials --config $CFG --server http://localhost:8180 --realm master \
-       --user admin --password "$KEYCLOAK_ADMIN_PASSWORD" >/dev/null 2>&1 \
-     && $KC get realms/tricore --config $CFG --fields realm >/dev/null 2>&1; then
-    break
-  fi
-  (( i == 90 )) && { echo "Keycloak chua san sang sau 270s" >&2; exit 1; }
-  sleep 3
-done
+echo "== cau hinh Keycloak + realm tricore"
+trap 'rm -f "$CFG"' EXIT
+$KC config credentials --config "$CFG" --server "${KC_SERVER:-http://localhost:8180}" \
+    --realm master --user admin --password "$KEYCLOAK_ADMIN_PASSWORD" >/dev/null
 
 set_secret() {
   local id
@@ -38,5 +32,4 @@ $KC set-password -r tricore --config $CFG --username employee-demo --new-passwor
 $KC set-password -r tricore --config $CFG --username coordinator-demo --new-password "$DEMO_COORDINATOR_PASSWORD"
 $KC set-password -r tricore --config $CFG --username worker-demo --new-password "$DEMO_WORKER_PASSWORD"
 echo "mat khau 3 tai khoan demo: da dat"
-rm -f $CFG
 echo "kc-init OK"

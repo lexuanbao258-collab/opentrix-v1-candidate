@@ -114,6 +114,9 @@ Platform application errors use `ApiError {status, code, message, errors}`. Vali
 - Manifest evolution is additive and permits policy tightening. Workflow topology changes and record backfills are deferred.
 - Create reservations are retained after delete. The MVP has no reservation expiry or purge protocol.
 - ACK loss after a successful commit is tested by injecting a failure after PostgreSQL commits. Transport failures are exercised separately with a dropped test HTTP connection.
+- A bare HTTP 500 after a write does not establish whether it committed. Read the authorized record and history first. Only create supports explicit replay with the original UUID and payload. Treat `503 STORE_UNAVAILABLE` as the documented failure to start the transaction.
+- Use canonical API paths. The ingress and ESM BFF route filters are separate from Platform authorization, which validates the token and enforces application, operation and record scope.
+- Gate Backend startup and operational restarts on Keycloak readiness and realm discovery. Controlled manifest registration runs while Backend is stopped. Start Backend after successful registration, without restarting the completed migrator.
 - M2 introduced generic Platform changes. Evidence for a second application with zero Platform changes starts from the frozen M2.5 baseline.
 - Search is substring `ILIKE` without a trigram index; fine for catalog sizes, not for large tables.
 - `offset` paging; no cursor.
@@ -121,12 +124,12 @@ Platform application errors use `ApiError {status, code, message, errors}`. Vali
 - Manifest regex patterns run in the JVM; manifests are owner-controlled, not user input.
 - Not production-ready; no multi-tenancy.
 
-## 9. Attribution
-
-Upstream copyright and the SPDX headers of existing files are unchanged. The manifest frame is adapted from upstream commit `1ec99ad` (Phan Hai Yen, Apache-2.0). New candidate files follow the repository convention (`2026 TRICORE contributors`, Apache-2.0); the candidate-specific contribution (Platform module, migrations, BFF routes, UI probe, tests, this ADR) was authored in the candidate repository by `lexuanbao258-collab` with AI assistance (Claude) and is recorded in commit trailers and `NOTICE`.
-
 ## 8. Rollback
 
 **Functional rollback:** set `OPENTRIX_PLATFORM_ENABLED=false` and remove the `platform-migrate` service. This preserves Platform data. Deploy a runtime that expects V3 before re-enabling Platform. An older runtime expects the prior schema version.
 
 **Destructive step, never automatic:** removing the Platform data (`DROP SCHEMA opentrix_platform CASCADE`) deletes all records and audit events. It requires a separate, explicit approval and a verified backup; no script or test in this repository performs it against a persistent database.
+
+## 9. Attribution
+
+Upstream copyright and existing SPDX headers are preserved. The manifest frame is adapted from upstream commit `1ec99ad` (Phan Hai Yen, Apache-2.0). The Platform module, migrations, BFF routes, UI probe, tests and this ADR were authored in the independent candidate by `lexuanbao258-collab` with AI assistance, as recorded in commit trailers and [NOTICE](../../NOTICE). M2.5 is the runtime baseline used by the separate M3/M4 ESM and M5 Procurement experiments. Codex assisted with M5 and the M6.1-FIX deployment and documentation work. Candidate milestones do not confer upstream approval.

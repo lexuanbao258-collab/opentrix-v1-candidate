@@ -63,17 +63,36 @@ services:
       KC_HTTP_PORT: "8180"
       KC_HOSTNAME: http://localhost:8180
       KC_HTTP_MANAGEMENT_PORT: "9001"
+      KC_HEALTH_ENABLED: "true"
       JAVA_OPTS_KC_HEAP: -Xmx512m
     volumes:
       - ./keycloak/tricore-realm.json:/opt/keycloak/data/import/tricore-realm.json:ro
       - ./keycloak/themes/opentrix:/opt/keycloak/themes/opentrix:ro
+    healthcheck:
+      # Keycloak's image includes Bash but no HTTP client. Check readiness and realm import.
+      test:
+        - CMD
+        - bash
+        - -ec
+        - |
+          probe() {
+            printf 'GET %s HTTP/1.0\r\nHost: localhost\r\n\r\n' "$$2" >&3
+            read -r protocol status reason <&3
+            [[ "$$status" == 200 ]]
+          } 3<>"/dev/tcp/127.0.0.1/$$1"
+          probe 9001 /health/ready
+          probe "$${KC_HTTP_PORT}" /realms/tricore/.well-known/openid-configuration
+      interval: 3s
+      timeout: 3s
+      retries: 40
+      start_period: 30s
 
   kc-init:
     <<: *loopback
     image: quay.io/keycloak/keycloak:26.8.0
     depends_on:
       keycloak:
-        condition: service_started
+        condition: service_healthy
     entrypoint: ["bash", "/init/kc-init.sh"]
     environment:
       KEYCLOAK_ADMIN_PASSWORD: ${KEYCLOAK_ADMIN_PASSWORD}
@@ -122,6 +141,8 @@ services:
         condition: service_completed_successfully
       kc-init:
         condition: service_completed_successfully
+      keycloak:
+        condition: service_healthy
     environment:
       JAVA_TOOL_OPTIONS: -Xmx512m
       SERVER_ADDRESS: 127.0.0.1
