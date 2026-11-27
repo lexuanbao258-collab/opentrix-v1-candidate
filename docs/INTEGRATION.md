@@ -4,6 +4,8 @@ SPDX-License-Identifier: Apache-2.0
 -->
 
 # Tích hợp / Integration
+> **Candidate note (M6.3).** This guide describes the upstream legacy IT Helpdesk and Workflow system at its recorded baseline. It does **not** describe the candidate Platform API (`/api/v1/apps`), manifests or the ESM and Procurement applications. For those, start at [candidate/README.md](candidate/README.md). The historical text below is unchanged.
+
 
 [Docs](README.md) · [Architecture](ARCHITECTURE.md) · [API](API.md) · [Testing](TESTING.md) · [Integration](INTEGRATION.md)
 

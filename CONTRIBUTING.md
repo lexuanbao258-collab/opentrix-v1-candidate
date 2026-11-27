@@ -5,6 +5,13 @@ SPDX-License-Identifier: Apache-2.0
 
 # Contributing to OpenTrix
 
+> **Candidate repository note (M6.3).** The guide below is the upstream guide and is preserved. This repository is the
+> independent candidate `lexuanbao258-collab/opentrix-v1-candidate`. Contributions here are reviewed by its owner and
+> carry **no upstream approval**; they do not change upstream history, ADRs or licences. The AI-disclosure, SPDX/REUSE and
+> no-secrets rules below apply unchanged. Documentation for the candidate Platform is in [docs/candidate/](docs/candidate/README.md).
+> Do not publish a remote, merge to a default branch, tag or release without the owner's explicit approval.
+
+
 > **Language / Ngôn ngữ:** [English](#en) · [Tiếng Việt](#vi)
 
 ---

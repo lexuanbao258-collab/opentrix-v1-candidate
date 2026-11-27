@@ -8,17 +8,63 @@
 
 ## OpenTrix Platform candidate
 
-This independent candidate is an API-first foundation for internal business applications. It provides authenticated
-application discovery, manifest-defined records and workflows, scoped permissions and audit. The baseline for Platform
-runtime code is [`f401b6e79930a1386e71e92a91ae6a909cfa1e59`](https://github.com/lexuanbao258-collab/opentrix-v1-candidate/commit/f401b6e79930a1386e71e92a91ae6a909cfa1e59).
-The candidate is intended for local evaluation with synthetic data. Production deployment and upstream approval are outside
-its current status. The legacy OpenTrix demo remains documented below.
+**OpenTrix is a developer-first, API-first, self-hosted, open-source enterprise application foundation.** You describe
+an internal business application (roles, records, validation, an approval workflow, audit) in one JSON manifest. The
+Platform serves it through a versioned REST API with identity verification, per-application roles, `own`/`all`
+permissions, separation of duties, optimistic concurrency and an append-only audit trail. Applications are clients of
+that API; they never touch the Platform database.
 
-- Design and lifecycle in [ADR-C001](docs/08-decisions/ADR-C001-candidate-platform-baseline.md) and the [Platform OpenAPI v1 contract](docs/api/openapi-v1.json).
-- IT Helpdesk and HR Leave in the [independent ESM example](https://github.com/lexuanbao258-collab/opentrix-enterprise-demo/tree/a4db6fe2127a936c85ee20aa2d3cf557fa107c3f).
-- Procurement M5 is a Python CLI in the sibling local checkout `opentrix-procurement-demo`. Its `README.md` covers the manifest and machine identities. A public remote has not been confirmed.
+> **Status: a competition-ready, self-hosted demonstration candidate. It is not a production-certified system** and it
+> has no upstream approval. Evaluate it locally with synthetic data. Known limitations are listed in
+> [SECURITY-LIMITATIONS.md](docs/candidate/SECURITY-LIMITATIONS.md).
 
-- Candidate release integration is staged in the [M6.4 integration plan](docs/06-deployment/m64-release-integration-plan.md).
+| Repository | Pinned commit | What it demonstrates |
+| --- | --- | --- |
+| This repository, Platform runtime | [`f401b6e`](https://github.com/lexuanbao258-collab/opentrix-v1-candidate/commit/f401b6e79930a1386e71e92a91ae6a909cfa1e59) (frozen); deployment files [`179d61d`](https://github.com/lexuanbao258-collab/opentrix-v1-candidate/commit/179d61d31069ce1a1bf246f35722d3a66cad0a93) | Identity, application registry, records, workflow, audit, manifests |
+| [`opentrix-enterprise-demo`](https://github.com/lexuanbao258-collab/opentrix-enterprise-demo/tree/7b191c509d671af22089756dc18c4f3e94e8d3eb) | `7b191c5` (M6.2) | IT Helpdesk and HR Leave as two modules of one React + Node BFF application |
+| `opentrix-procurement-demo` | `f867777` | An independently implemented Python CLI. **Local checkout only; no public remote has been approved.** |
+
+The two ESM modules and Procurement ran on the frozen runtime with **0 changed Platform runtime files**.
+
+### Documentation
+
+| I want to... | Read |
+| --- | --- |
+| Understand the product, scope and status | [docs/candidate/README.md](docs/candidate/README.md) |
+| Install and verify it | [Quick Start](docs/candidate/QUICKSTART.md) |
+| Build a new application from the public contract | [Developer guide](docs/candidate/DEVELOPER-GUIDE.md) |
+| Call the API and handle failures safely | [API guide](docs/candidate/API-GUIDE.md) and [`openapi-v1.json`](docs/api/openapi-v1.json) |
+| See the diagrams (context, containers, modules, flows, ERD, topology) | [Architecture](docs/candidate/ARCHITECTURE.md) |
+| Know what is not protected | [Security and limitations](docs/candidate/SECURITY-LIMITATIONS.md) |
+| See the evidence behind the claims | [Validation summary](docs/candidate/VALIDATION.md) |
+| Read the binding design decisions | [ADR-C001](docs/08-decisions/ADR-C001-candidate-platform-baseline.md) (status PROPOSED, candidate only) |
+| See what remains before a release | [M6.4 integration plan](docs/06-deployment/m64-release-integration-plan.md) |
+
+### Candidate-specific paths
+
+| Path | Content |
+| --- | --- |
+| `backend/src/main/java/com/tricore/dxos/platform/` | Platform module: `api`, `records`, `manifest`, `registry`, `security` |
+| `backend/src/main/resources/db/platform/` | Flyway migrations V1 to V3 (schema `opentrix_platform`) |
+| `backend/src/main/resources/platform/app-manifest.schema.json` | Manifest format `candidate-v1` |
+| `apps/it-helpdesk/app.json`, `apps/hr-leave/app.json` | Example manifests (IT Helpdesk 1.0.0, HR Leave 1.1.0) |
+| `clients/opentrix-cli/` | Minimal Node client for the Platform API |
+| `infra/compose.demo.yml`, `infra/keycloak/` | Demo stack, including `platform-migrate` and the Keycloak realm |
+
+### Relationship with upstream
+
+This repository started from upstream `main@e7cd26a` and keeps its history, copyright notices and licence. The legacy
+IT Helpdesk demo and its documentation are still here and are **not** exposed through the Platform. Upstream ADRs are not
+edited; ADR-C001 section 6 records which ones the candidate does not follow. Candidate milestones carry no upstream
+approval. Authorship and AI assistance are disclosed in [NOTICE](NOTICE).
+
+---
+
+## Legacy OpenTrix demo (upstream, historical)
+
+Everything from here to the end of this file is the upstream v0.2.0 README for the IT Helpdesk demo, kept as written.
+Its links to `github.com/tricore-opentrix/opentrix` point to the upstream project. It does not describe the candidate
+Platform; use the section above for that.
 
 ## Overview
 

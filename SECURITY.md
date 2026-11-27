@@ -5,6 +5,18 @@ SPDX-License-Identifier: Apache-2.0
 
 # Security Policy
 
+> **Candidate repository note (M6.3).** The policy below is the upstream policy and is preserved. This repository is the
+> independent candidate `lexuanbao258-collab/opentrix-v1-candidate`, not the upstream project.
+>
+> - GitHub Private Vulnerability Reporting is currently **disabled** on this repository, so the **Report a vulnerability**
+>   button mentioned below does not exist here. Open an Issue with the **Security contact request** template
+>   (`.github/ISSUE_TEMPLATE/security-contact.yml`) **without any vulnerability details**; the maintainer
+>   (`lexuanbao258-collab`) will arrange a private channel. Do not post details, tokens or secrets in an Issue.
+> - The "Supported versions" table lists upstream releases. The candidate has **no release**; it is a demonstration
+>   candidate and is **not production-certified**. Known limitations: [docs/candidate/SECURITY-LIMITATIONS.md](docs/candidate/SECURITY-LIMITATIONS.md).
+> - A defect that also exists in upstream code should additionally be reported to the upstream project.
+
+
 > **Language / Ngôn ngữ:** [English](#en) · [Tiếng Việt](#vi)
 
 ---

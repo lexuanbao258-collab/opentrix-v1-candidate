@@ -67,4 +67,6 @@ Candidate M2.5 hardens manifest deployment, write outcomes and record
 reconciliation. M3/M4 (ESM) and M5 (Procurement) are independent integration
 examples and preserve the frozen Platform runtime baseline. Codex assisted
 with the M5 experiment and M6.1-FIX deployment and documentation changes.
+The M6.3 documentation and developer-experience work (docs/candidate/) was prepared with AI assistance from
+Claude. The commands it documents were checked by execution; see docs/candidate/VALIDATION.md.
 These milestones are candidate work and carry no upstream approval.

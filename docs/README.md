@@ -9,6 +9,20 @@ SPDX-License-Identifier: Apache-2.0
 
 ---
 
+## Candidate Platform documentation (start here)
+
+This repository is the independent **OpenTrix Platform candidate**. Its documentation lives in [`candidate/`](candidate/README.md):
+[Quick Start](candidate/QUICKSTART.md) · [Developer guide](candidate/DEVELOPER-GUIDE.md) · [API guide](candidate/API-GUIDE.md) ·
+[Architecture](candidate/ARCHITECTURE.md) · [Security and limitations](candidate/SECURITY-LIMITATIONS.md) ·
+[Validation summary](candidate/VALIDATION.md) · [ADR-C001](08-decisions/ADR-C001-candidate-platform-baseline.md) ·
+[OpenAPI v1](api/openapi-v1.json).
+
+The guides listed below this block (everything under "Overview" and "Tổng quan") are the **upstream legacy IT Helpdesk**
+documentation. They are preserved as written and do not describe the candidate Platform API. Their absolute links to
+`github.com/tricore-opentrix/opentrix` refer to the upstream project.
+
+---
+
 <a id="en"></a>
 
 ## Overview
