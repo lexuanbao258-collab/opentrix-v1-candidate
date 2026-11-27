@@ -54,7 +54,7 @@ Helpdesk, legacy workflow adapters or HTTP gateways (ArchUnit rule `PlatformDepe
 
 | Application | Repository | What it is |
 | --- | --- | --- |
-| IT Helpdesk and HR Leave (ESM) | [`opentrix-enterprise-demo`](https://github.com/lexuanbao258-collab/opentrix-enterprise-demo) | Two modules of one React + Node BFF application. Both use the same shell, API client, forms, tables, workflow and audit components. |
+| IT Helpdesk and HR Leave (ESM) | [`opentrix-enterprise-demo`](https://github.com/lexuanbao258-collab/opentrix-enterprise-demo/tree/479d4e7a8f44f91a7c45a9265bd3f1a1407ea1f3) | Two modules of one React + Node BFF application. Both use the same shell, API client, forms, tables, workflow and audit components. |
 | Procurement | `opentrix-procurement-demo` (local checkout; **no public remote has been approved**) | An independently implemented Python standard-library CLI with its own manifest, deployment overlay and tests. |
 
 **Demonstrated reusability** (measured facts, not time-savings claims; details in [VALIDATION.md](VALIDATION.md#5-reusability)):

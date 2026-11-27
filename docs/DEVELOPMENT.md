@@ -5,7 +5,7 @@ SPDX-License-Identifier: Apache-2.0
 -->
 
 # Hướng dẫn phát triển / Development guide
-> **Candidate note (M6.3).** This guide describes the upstream legacy IT Helpdesk and Workflow system at its recorded baseline. It does **not** describe the candidate Platform API (`/api/v1/apps`), manifests or the ESM and Procurement applications. For those, start at [candidate/README.md](candidate/README.md). The historical text below is unchanged.
+> **Candidate note (M6.3).** This guide describes the upstream legacy IT Helpdesk and Workflow system at its recorded baseline. It does **not** describe the candidate Platform API (`/api/v1/apps`), manifests or the ESM and Procurement applications. For those, start at [candidate/README.md](candidate/README.md). The legacy checkout examples below pin the upstream fork point `e7cd26a`.
 
 
 **Điều hướng / Navigation:** [Tài liệu](README.md) · [Development](DEVELOPMENT.md) · [Deployment](DEPLOYMENT.md) · [Release](RELEASE.md) · **Ngôn ngữ / Language:** [Tiếng Việt](#vi) | [English](#en)
@@ -67,6 +67,7 @@ docs/        Tài liệu, ADR, bằng chứng
 ```powershell
 git clone https://github.com/tricore-opentrix/opentrix.git
 Set-Location opentrix
+git checkout --detach e7cd26a6eac38bbd15ed5855ca1d5259b287b65d
 git rev-parse HEAD
 java -version
 node --version
@@ -78,6 +79,7 @@ npm.cmd --version
 ```sh
 git clone https://github.com/tricore-opentrix/opentrix.git
 cd opentrix
+git checkout --detach e7cd26a6eac38bbd15ed5855ca1d5259b287b65d
 git rev-parse HEAD
 java -version
 node --version
@@ -354,6 +356,7 @@ docs/        Documentation, ADRs, evidence
 ```powershell
 git clone https://github.com/tricore-opentrix/opentrix.git
 Set-Location opentrix
+git checkout --detach e7cd26a6eac38bbd15ed5855ca1d5259b287b65d
 git rev-parse HEAD
 java -version
 node --version
@@ -365,6 +368,7 @@ npm.cmd --version
 ```sh
 git clone https://github.com/tricore-opentrix/opentrix.git
 cd opentrix
+git checkout --detach e7cd26a6eac38bbd15ed5855ca1d5259b287b65d
 git rev-parse HEAD
 java -version
 node --version

@@ -20,7 +20,7 @@ trying them first.
 | Docker | Docker Desktop, Engine 29.7.2, Linux containers | Compose **2.24.4 or newer** (the overlays use `!override` and `!reset`). Tested with Compose 5.4.0. |
 | Git | 2.45.1 | any recent Git with `git archive` |
 | Python | 3.14.2 | 3.10 or newer (standard library only) |
-| Node.js | 24.19.0 | 22 or newer (ESM only) |
+| Node.js | 24.19.0 | 22.12 or newer (ESM only) |
 | Other tools | `tar`, `openssl`, `curl` (ESM scripts use `openssl rand`) | same |
 
 Images used (pulled or built by Compose): PostgreSQL `17.11-alpine`, Keycloak `26.8.0`, Caddy `2.10.2`, Eclipse
@@ -45,13 +45,19 @@ The M6 milestones stopped all build operations if free space on the system drive
 
 | Repository | Commit | Notes |
 | --- | --- | --- |
-| Platform (`opentrix-v1-candidate`) | runtime `f401b6e79930a1386e71e92a91ae6a909cfa1e59` | Frozen runtime. `git diff f401b6e HEAD -- backend portal-bff frontend apps docs/api` is empty. |
-| Platform deployment files | `179d61d31069ce1a1bf246f35722d3a66cad0a93` (M6.1-FIX) | Adds the Keycloak readiness gate to `infra/compose.demo.yml`. ESM uses a checkout at this commit or a descendant. |
-| ESM (`opentrix-enterprise-demo`) | `7b191c509d671af22089756dc18c4f3e94e8d3eb` (M6.2) | |
-| Procurement (`opentrix-procurement-demo`) | `f86777755fbcfde249881af0ee3064cca1de35a1` | Local checkout only. |
+| Platform runtime | `f401b6e79930a1386e71e92a91ae6a909cfa1e59` | Frozen runtime and the deployment tree extracted by Procurement. |
+| Platform deployment for ESM | `179d61d31069ce1a1bf246f35722d3a66cad0a93` | Adds the Keycloak readiness gate inherited by the ESM overlay. |
+| Platform M6.3 documentation | `621c32999668203f40363009aabe83ec66287c37` | Input to the M6.4 documentation revision. |
+| ESM application / deployment | `7b191c509d671af22089756dc18c4f3e94e8d3eb` | M6.2 implementation. |
+| ESM M6.3 documentation | `479d4e7a8f44f91a7c45a9265bd3f1a1407ea1f3` | Includes the M6.2 implementation; the standalone example selects this exact checkout. |
+| Procurement application / deployment | `f86777755fbcfde249881af0ee3064cca1de35a1` | M6.1-FIX implementation and readiness overlay. |
+| Procurement M6.3 documentation | `33a8bbf36f6f2daeb178ef405f8023561146c4d7` | Includes the M6.1-FIX implementation; the standalone example selects this exact checkout. |
 
-Documentation commits made in M6.3 sit on top of these and change no runtime source (see
-[VALIDATION.md](VALIDATION.md#4-runtime-source-diff)).
+The M6.4 release manifest records all three exact candidate SHAs after the documentation commits are created.
+Use those SHA values and the manifest's Git sources to reproduce the release verification. The standalone examples
+below select immutable accepted commits that carry the same runtime and deployment files. Both paths require Git
+checkout commands with no unpublished tag dependency. Procurement invokes `git archive` against the frozen
+Platform commit, so supply a Platform Git checkout even when the Procurement source came from an archive.
 
 ## 3. Path A: Platform plus Procurement CLI (smallest stack, `TESTED`)
 
@@ -60,11 +66,13 @@ the pinned Platform commit with `git archive`, generates every secret, builds a 
 starts an isolated Compose project.
 
 ```bash
-# Platform checkout (any commit that contains f401b6e, for example the candidate branch)
-git clone https://github.com/lexuanbao258-collab/opentrix-v1-candidate.git
-# Procurement is a local checkout; no public remote exists. Obtain it from its owner.
+git clone --no-checkout https://github.com/lexuanbao258-collab/opentrix-v1-candidate.git opentrix-platform-runtime
+git -C opentrix-platform-runtime checkout --detach f401b6e79930a1386e71e92a91ae6a909cfa1e59
+# Set PROCUREMENT_GIT_SOURCE to the checkout or Git bundle supplied by the owner.
+git clone --no-local --no-checkout "$PROCUREMENT_GIT_SOURCE" opentrix-procurement-demo
+git -C opentrix-procurement-demo checkout --detach 33a8bbf36f6f2daeb178ef405f8023561146c4d7
 cd opentrix-procurement-demo
-python deploy/stack.py up --platform /path/to/opentrix-v1-candidate
+python deploy/stack.py up --platform ../opentrix-platform-runtime
 python deploy/stack.py ps
 ```
 
@@ -122,12 +130,14 @@ checks, about 5 to 6 minutes), `python deploy/stack.py restart` followed by `pyt
 
 ## 4. Path B: ESM (IT Helpdesk and HR Leave) on the same Platform
 
-ESM needs a Platform checkout at `179d61d` or later because its Compose overlay inherits the Keycloak readiness gate.
+ESM uses the Platform deployment from `179d61d`, which provides the Keycloak readiness gate.
 Run everything from a POSIX shell (Git Bash on Windows).
 
 ```bash
-git clone https://github.com/lexuanbao258-collab/opentrix-v1-candidate.git
-git clone https://github.com/lexuanbao258-collab/opentrix-enterprise-demo.git
+git clone --no-checkout https://github.com/lexuanbao258-collab/opentrix-v1-candidate.git opentrix-v1-candidate
+git -C opentrix-v1-candidate checkout --detach 179d61d31069ce1a1bf246f35722d3a66cad0a93
+git clone --no-checkout https://github.com/lexuanbao258-collab/opentrix-enterprise-demo.git opentrix-enterprise-demo
+git -C opentrix-enterprise-demo checkout --detach 479d4e7a8f44f91a7c45a9265bd3f1a1407ea1f3
 cd opentrix-enterprise-demo
 export PLATFORM_DIR="$PWD/../opentrix-v1-candidate"
 . deploy/settings.sh
@@ -139,7 +149,7 @@ deploy/run-bff-local.sh                  # foreground; http://localhost:5174
 ```
 
 Open `http://localhost:5174`. Demo identities and their roles are listed in the ESM
-[development guide](https://github.com/lexuanbao258-collab/opentrix-enterprise-demo/blob/7b191c509d671af22089756dc18c4f3e94e8d3eb/docs/DEVELOPMENT.md#run-esm).
+[development guide](https://github.com/lexuanbao258-collab/opentrix-enterprise-demo/blob/479d4e7a8f44f91a7c45a9265bd3f1a1407ea1f3/docs/DEVELOPMENT.md#run-esm).
 Their passwords are random and live only in `.local/esm.env`. Read one without printing the others, for example:
 `grep '^ESM_PASSWORD_AGENT=' .local/esm.env`. Never paste them into issues, commits or screenshots.
 

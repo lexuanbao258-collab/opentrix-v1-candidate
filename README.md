@@ -20,9 +20,9 @@ that API; they never touch the Platform database.
 
 | Repository | Pinned commit | What it demonstrates |
 | --- | --- | --- |
-| This repository, Platform runtime | [`f401b6e`](https://github.com/lexuanbao258-collab/opentrix-v1-candidate/commit/f401b6e79930a1386e71e92a91ae6a909cfa1e59) (frozen); deployment files [`179d61d`](https://github.com/lexuanbao258-collab/opentrix-v1-candidate/commit/179d61d31069ce1a1bf246f35722d3a66cad0a93) | Identity, application registry, records, workflow, audit, manifests |
-| [`opentrix-enterprise-demo`](https://github.com/lexuanbao258-collab/opentrix-enterprise-demo/tree/7b191c509d671af22089756dc18c4f3e94e8d3eb) | `7b191c5` (M6.2) | IT Helpdesk and HR Leave as two modules of one React + Node BFF application |
-| `opentrix-procurement-demo` | `f867777` | An independently implemented Python CLI. **Local checkout only; no public remote has been approved.** |
+| Platform | Runtime [f401b6e](https://github.com/lexuanbao258-collab/opentrix-v1-candidate/commit/f401b6e79930a1386e71e92a91ae6a909cfa1e59); deployment [179d61d](https://github.com/lexuanbao258-collab/opentrix-v1-candidate/commit/179d61d31069ce1a1bf246f35722d3a66cad0a93); M6.3 docs [621c329](https://github.com/lexuanbao258-collab/opentrix-v1-candidate/commit/621c32999668203f40363009aabe83ec66287c37) | Identity, application registry, records, workflow, audit, manifests |
+| [ESM](https://github.com/lexuanbao258-collab/opentrix-enterprise-demo/tree/479d4e7a8f44f91a7c45a9265bd3f1a1407ea1f3) | Application `7b191c5`; M6.3 docs `479d4e7` | IT Helpdesk and HR Leave in one React + Node BFF application |
+| Procurement | Application `f867777`; M6.3 docs `33a8bbf` | Independent Python CLI distributed by its owner |
 
 The two ESM modules and Procurement ran on the frozen runtime with **0 changed Platform runtime files**.
 
@@ -147,6 +147,7 @@ Requirements: Git and Docker with Compose 2.24 or later; on Windows, **PowerShel
 ```bash
 git clone https://github.com/tricore-opentrix/opentrix.git
 cd opentrix
+git checkout --detach e7cd26a6eac38bbd15ed5855ca1d5259b287b65d
 
 # Linux / macOS
 bash infra/demo/demo-up.sh --gateway
@@ -301,6 +302,7 @@ Yêu cầu: Git, Docker kèm Compose 2.24 trở lên; trên Windows cần **Powe
 ```bash
 git clone https://github.com/tricore-opentrix/opentrix.git
 cd opentrix
+git checkout --detach e7cd26a6eac38bbd15ed5855ca1d5259b287b65d
 
 # Linux / macOS
 bash infra/demo/demo-up.sh --gateway
